@@ -1,6 +1,6 @@
 const IORedis = require("ioredis");
 
-const client = new IORedis({
+const messageClient = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
@@ -10,7 +10,7 @@ const client = new IORedis({
   },
 });
 
-client.on("error", (err) => {
+messageClient.on("error", (err) => {
   console.log("Error", err);
 });
 
@@ -20,4 +20,4 @@ client.on("error", (err) => {
 // text
 // timestamp
 
-module.exports = client;
+module.exports = messageClient;

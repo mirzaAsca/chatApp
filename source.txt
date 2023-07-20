@@ -1,3 +1,4 @@
+├── .git
 ├── README.md
 ├── backend
 │   ├── .gitignore
@@ -67,7 +68,7 @@
 │       ├── logo.svg
 │       ├── reportWebVitals.js
 │       └── setupTests.js
-├── output.txt
+├── source.txt
 └── structure.py
 
 ==============================
@@ -133,8 +134,8 @@ exports.sendMessage = async (req, res, next) => {
   const { sender, text } = req.body;
 
   try {
-    // Store the message in the database
-    const message = await Message.set(`message:${sender}`, JSON.stringify({ text, timestamp: Date.now() }));
+    const messageKey = `message:${sender}:${Date.now()}`;
+    await Message.set(messageKey, JSON.stringify({ text, timestamp: Date.now() }));
 
     res.status(201).json({ message: 'Message sent successfully' });
   } catch (error) {
@@ -142,10 +143,22 @@ exports.sendMessage = async (req, res, next) => {
   }
 };
 
+// chatController.js
 exports.getMessages = async (req, res, next) => {
   try {
-    // Retrieve the most recent messages from the database
-    const messages = await Message.get('message:*');
+    let cursor = 0;
+    let messages = [];
+
+    do {
+      const result = await Message.scan(cursor, 'MATCH', 'message:*');
+      cursor = result[0];
+      const keys = result[1];
+
+      for (const key of keys) {
+        const message = await Message.get(key);
+        messages.push(JSON.parse(message));
+      }
+    } while (cursor !== '0');
 
     res.json({ messages });
   } catch (error) {
@@ -154,28 +167,30 @@ exports.getMessages = async (req, res, next) => {
 };
 
 
+
 ==============================
 
 -userController.js
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const IORedis = require('ioredis');
+let redis = User.client;
 
 exports.register = async (req, res, next) => {
   const { username, password } = req.body;
 
   try {
-    // Check if the username already exists
-    const userExists = await User.verifyUser(username, password);
+    const userExists = await User.verifyUser(username);
     if (userExists) {
-      return res.status(400).json({ error: 'Username already taken' });
+      return res.status(400).json({ error: "Username already taken" });
     }
 
-    // Save the user to the database
     await User.addUser(username, password);
 
-    res.status(201).json({ message: 'User registered successfully' });
+    res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
+    console.error("Registration error:", error);
     next(error);
   }
 };
@@ -184,34 +199,95 @@ exports.login = async (req, res, next) => {
   const { username, password } = req.body;
 
   try {
-    const validPassword = await User.verifyUser(username, password);
-  
-    if (!validPassword) {
-      return res.status(400).json({ error: 'Invalid password' });
+    const user = await User.getUser(username);
+
+    if (!user || !user.password) {
+      return res.status(400).json({ error: "User does not exist" });
     }
-  
-    const token = jwt.sign({ username }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  
-    res.json({ token });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+
+    if (!validPassword) {
+      return res.status(400).json({ error: "Invalid password" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error("JWT_SECRET is not defined in the environment variables.");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+
+    const token = jwt.sign({ username }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    // Set the JWT token in an HTTP-only cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      sameSite: 'strict', // or 'lax' depending on your needs
+      secure: false, // set this to true if your website runs on https, otherwise set it to false
+      maxAge: 3600000 // token expiration time in milliseconds, this is equal to 1 hour
+    });
+
+    res.status(200).json({ message: "User logged in successfully" });
   } catch (error) {
+    console.error("Login error:", error);
     next(error);
   }
 };
+
+
+exports.logout = async (req, res, next) => {
+  // Add the existing token to the invalidated tokens set
+  const token = req.cookies.token;
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+
+  try {
+    await redis.sadd("invalidatedTokens", token);
+
+    // Clear the token cookie
+    res.clearCookie('token');
+
+    res.status(200).json({ message: 'User logged out successfully' });
+  } catch (error) {
+    console.error("Logout error:", error);
+    next(error);
+  }
+};
+
 
 
 ==============================
 
 -auth.js
 const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+const IORedis = require('ioredis');
 
-exports.authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+const client = new IORedis({
+  host: process.env.REDIS_HOST,
+  port: process.env.REDIS_PORT,
+  password: process.env.REDIS_PASSWORD,
+});
 
-  if (!authHeader) {
+exports.authenticate = async (req, res, next) => {
+  const token = req.cookies.token;
+
+  if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  const token = authHeader.split(' ')[1];
+  // Check if the token is invalidated
+  const isInvalidated = await client.sismember("invalidatedTokens", token);
+  if (isInvalidated) {
+    return res.status(401).json({ error: 'The token is invalidated' });
+  }
+
+  // Check if the JWT_SECRET is defined
+  if (!process.env.JWT_SECRET) {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 
   try {
     const user = jwt.verify(token, process.env.JWT_SECRET);
@@ -262,7 +338,7 @@ exports.rateLimiter = async (req, res, next) => {
 -Message.js
 const IORedis = require("ioredis");
 
-const client = new IORedis({
+const messageClient = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
@@ -272,7 +348,7 @@ const client = new IORedis({
   },
 });
 
-client.on("error", (err) => {
+messageClient.on("error", (err) => {
   console.log("Error", err);
 });
 
@@ -282,14 +358,14 @@ client.on("error", (err) => {
 // text
 // timestamp
 
-module.exports = client;
+module.exports = messageClient;
 
 
 ==============================
 
 -Room.js
 const IORedis = require('ioredis');
-
+const client = require('../db');
 const client = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
@@ -328,11 +404,11 @@ const bcrypt = require("bcrypt");
 console.log("About to create Redis client");
 
 // Create Redis client
-const client = new IORedis({
+const redisClient = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
-  retryStrategy: function(times) {
+  retryStrategy: function (times) {
     const delay = Math.min(times * 50, 2000);
     return delay;
   },
@@ -340,11 +416,11 @@ const client = new IORedis({
 
 console.log("Redis client created");
 
-client.on("connect", () => {
+redisClient.on("connect", () => {
   console.log("Redis client connected");
 });
 
-client.on("error", (err) => {
+redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
@@ -353,7 +429,7 @@ console.log("Successfully connected to Redis");
 // Redis functions
 async function addUser(username, password) {
   const hashedPassword = await hashPassword(password);
-  await client.hset(username, "password", hashedPassword);
+  await redisClient.hset(`user:${username}`, "password", hashedPassword);
 }
 
 async function hashPassword(password) {
@@ -361,15 +437,20 @@ async function hashPassword(password) {
   return await bcrypt.hash(password, salt);
 }
 
-async function verifyUser(username, password) {
-  const hashedPassword = await client.hget(username, "password");
-  return bcrypt.compare(password, hashedPassword);
+async function verifyUser(username) {
+  const password = await redisClient.hget(`user:${username}`, 'password');
+  return password !== null;
+}
+
+async function getUser(username) {
+  return await redisClient.hgetall(`user:${username}`);
 }
 
 module.exports = {
   addUser,
   verifyUser,
-  client,
+  getUser,
+  client: redisClient,
 };
 
 
@@ -424,6 +505,8 @@ const userController = require('../controllers/userController');
 
 router.post('/register', userController.register);
 router.post('/login', userController.login);
+router.post('/logout', userController.logout);
+
 module.exports = router;
 
 
@@ -440,19 +523,24 @@ process.on('uncaughtException', (err, origin) => {
   console.log('Caught exception:', err, 'Exception origin:', origin);
 });
 
-
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require('cookie-parser'); // Add this line
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
+const corsOptions = {
+  origin: 'http://localhost:3000', // replace with the origin of your front-end app
+  credentials: true,
+};
 
 // Create Express app
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser()); // Add this line
 
 // Routes
 app.use("/api/users", userRoutes);
@@ -499,14 +587,14 @@ module.exports = { server, io, client: User.client };
 
 -App.js
 // App.js
-import React from 'react';
-import { Route, Routes, Link, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import UseAuth from './hooks/UseAuth';
-import LoginForm from './components/LoginForm';
-import RegisterForm from './components/RegisterForm';
-import ChatRoom from './components/ChatRoom';
-import LogoutButton from './components/LogoutButton.js';
+import React from "react";
+import { Route, Routes, Link, Navigate } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
+import UseAuth from "./hooks/UseAuth";
+import LoginForm from "./components/LoginForm";
+import RegisterForm from "./components/RegisterForm";
+import ChatRoom from "./components/ChatRoom";
+import LogoutButton from "./components/LogoutButton.js";
 
 const ProtectedChatRoom = () => {
   const { user } = UseAuth();
@@ -529,15 +617,22 @@ const MainApp = () => {
       {user && <LogoutButton />}
       <nav>
         <ul>
-          <li><Link to="/login">Login</Link></li>
-          <li><Link to="/register">Register</Link></li>
-          <li><Link to="/chat">Chat</Link></li>
+          <li>
+            <Link to="/login">Login</Link>
+          </li>
+          <li>
+            <Link to="/register">Register</Link>
+          </li>
+          <li>
+            <Link to="/chat">Chat</Link>
+          </li>
         </ul>
       </nav>
       <Routes>
         <Route path="/login" element={<LoginForm />} />
         <Route path="/register" element={<RegisterForm />} />
         <Route path="/chat" element={<ProtectedChatRoom />} />
+        <Route path="/" element={<Navigate to="/login" />} />
       </Routes>
     </div>
   );
@@ -571,6 +666,7 @@ test('renders learn react link', () => {
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
+const socket = io();
 
 function ChatRoom() {
   const [message, setMessage] = useState('');
@@ -579,7 +675,7 @@ function ChatRoom() {
 
   const fetchMessages = async () => {
     try {
-      const response = await axios.get('/api/chat/messages');
+      const response = await axios.get('http://localhost:5000/api/chat/messages');
       setMessages(response.data.messages);
     } catch (error) {
       console.error('Failed to fetch messages', error);
@@ -631,29 +727,32 @@ export default ChatRoom;
 ==============================
 
 -LoginForm.js
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../contexts/AuthContext';
 
 function LoginForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const { setUser } = useContext(AuthContext); // Import AuthContext
   const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
+  
     try {
-      const response = await axios.post('/api/users/login', { username, password });
-      
-      // Store the token in local storage
-      localStorage.setItem('token', response.data.token);
-      
+      const response = await axios.post('http://localhost:5000/api/users/login', { username, password });
+      console.log(response.data);
+  
+      // Set the user in the context
+      setUser({ username });
+  
       // Redirect the user to the chat room
       navigate('/chat');
     } catch (error) {
       console.error('Failed to login', error);
-      
+  
       // Show an error message
       alert('Failed to login. Please check your username and password.');
     }
@@ -682,13 +781,27 @@ export default LoginForm;
 -LogoutButton.js
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import UseAuth from '../hooks/UseAuth';
 
 function LogoutButton() {
   const navigate = useNavigate();
+  const { setUser } = UseAuth();
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    navigate('/login');
+  const logout = async () => {
+    try {
+      await axios.post('http://localhost:5000/api/users/logout', {}, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        withCredentials: true
+      });
+  
+      setUser(null);
+      navigate('/login');
+    } catch (error) {
+      console.error('Failed to log out', error);
+    }
   };
 
   return (
@@ -735,15 +848,16 @@ function RegisterForm() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
+  
     try {
-      await axios.post('/api/users/register', { username, password });
+      await axios.post('http://localhost:5000/api/users/register', { username, password }, {
+        withCredentials: true
+      });
       alert('Registered successfully');
     } catch (error) {
-      console.error('Failed to register', error);
+      console.error('Failed to register', error.response.data);
     }
   };
-  
 
   return (
     <form onSubmit={handleSubmit}>
@@ -759,6 +873,7 @@ function RegisterForm() {
     </form>
   );
 }
+
 
 export default RegisterForm;
 

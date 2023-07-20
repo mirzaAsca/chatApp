@@ -8,19 +8,24 @@ process.on('uncaughtException', (err, origin) => {
   console.log('Caught exception:', err, 'Exception origin:', origin);
 });
 
-
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require('cookie-parser'); // Add this line
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
+const corsOptions = {
+  origin: 'http://localhost:3000', // replace with the origin of your front-end app
+  credentials: true,
+};
 
 // Create Express app
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser()); // Add this line
 
 // Routes
 app.use("/api/users", userRoutes);

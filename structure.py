@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 root_dir = '.'  # replace this with your directory path
-out_file = 'output.txt'  # replace with your output file path
+out_file = 'source.txt'  # replace with your output file path
 extensions = ['.js', '.handlebars']  # file extensions to collect content from
 
 def print_tree(directory, file_output, indent=''):

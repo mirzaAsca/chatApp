@@ -4,8 +4,8 @@ exports.sendMessage = async (req, res, next) => {
   const { sender, text } = req.body;
 
   try {
-    // Store the message in the database
-    const message = await Message.set(`message:${sender}`, JSON.stringify({ text, timestamp: Date.now() }));
+    const messageKey = `message:${sender}:${Date.now()}`;
+    await Message.set(messageKey, JSON.stringify({ text, timestamp: Date.now() }));
 
     res.status(201).json({ message: 'Message sent successfully' });
   } catch (error) {
@@ -13,13 +13,26 @@ exports.sendMessage = async (req, res, next) => {
   }
 };
 
+// chatController.js
 exports.getMessages = async (req, res, next) => {
   try {
-    // Retrieve the most recent messages from the database
-    const messages = await Message.get('message:*');
+    let cursor = 0;
+    let messages = [];
+
+    do {
+      const result = await Message.scan(cursor, 'MATCH', 'message:*');
+      cursor = result[0];
+      const keys = result[1];
+
+      for (const key of keys) {
+        const message = await Message.get(key);
+        messages.push(JSON.parse(message));
+      }
+    } while (cursor !== '0');
 
     res.json({ messages });
   } catch (error) {
     next(error);
   }
 };
+

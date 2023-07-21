@@ -1,27 +1,21 @@
 // App.js
-import React from "react";
-import { Route, Routes, Link, Navigate } from "react-router-dom";
-import { AuthProvider } from "./contexts/AuthContext";
+import { useLocation } from "react-router-dom";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
+import Home from "./components/Home";
+
 import UseAuth from "./hooks/UseAuth";
 import LoginForm from "./components/LoginForm";
 import RegisterForm from "./components/RegisterForm";
 import ChatRoom from "./components/ChatRoom";
-import LogoutButton from "./components/LogoutButton.js";
-
-const ProtectedChatRoom = () => {
-  const { user } = UseAuth();
-
-  // Redirect to login if user is not logged in
-  if (!user) {
-    return <Navigate to="/login" />;
-  }
-
-  // If user is logged in, render the chat room
-  return <ChatRoom />;
-};
+import RoomList from "./components/RoomList";
+import CreateRoom from "./components/CreateRoom";
+import ProtectedChatRoom from "./components/ProtectedChatRoom";
+import LogoutButton from "./components/LogoutButton";
 
 const MainApp = () => {
-  const { user } = UseAuth();
+  const auth = UseAuth();
+  const user = auth ? auth.user : null; // Set user to null if auth is undefined
+  const location = useLocation();
 
   return (
     <div className="App">
@@ -29,31 +23,53 @@ const MainApp = () => {
       {user && <LogoutButton />}
       <nav>
         <ul>
-          <li>
-            <Link to="/login">Login</Link>
-          </li>
-          <li>
-            <Link to="/register">Register</Link>
-          </li>
-          <li>
-            <Link to="/chat">Chat</Link>
-          </li>
+          {!user && (
+            <>
+              <li>
+                <Link to="/login">Login</Link>
+              </li>
+              <li>
+                <Link to="/register">Register</Link>
+              </li>
+              <li>
+                <Link to="/">Home</Link>
+              </li>
+            </>
+          )}
+          {user && (
+            <>
+              <li>
+                <Link to="/">Home</Link>
+              </li>
+              <li>
+                <Link to="/rooms">Rooms</Link>
+              </li>
+            </>
+          )}
         </ul>
       </nav>
+
       <Routes>
         <Route path="/login" element={<LoginForm />} />
         <Route path="/register" element={<RegisterForm />} />
-        <Route path="/chat" element={<ProtectedChatRoom />} />
-        <Route path="/" element={<Navigate to="/login" />} />
+        {user && (
+          <>
+            <Route path="/rooms/:roomId" element={<ProtectedChatRoom />} />
+            <Route
+              path="/rooms"
+              element={
+                <>
+                  <RoomList />
+                  <CreateRoom />
+                </>
+              }
+            />
+          </>
+        )}
+        {user && <Route path="/" element={<Home />} />}
       </Routes>
     </div>
   );
 };
 
-const App = () => (
-  <AuthProvider>
-    <MainApp />
-  </AuthProvider>
-);
-
-export default App;
+export default MainApp;

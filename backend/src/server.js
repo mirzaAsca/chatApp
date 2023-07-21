@@ -14,6 +14,7 @@ const cors = require("cors");
 const cookieParser = require('cookie-parser'); // Add this line
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const roomRoutes = require("./routes/roomRoutes"); // Add this line
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
 const corsOptions = {
@@ -30,6 +31,7 @@ app.use(cookieParser()); // Add this line
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/rooms", roomRoutes); // Add this line
 
 // Error handling middleware
 app.use(errorHandler);

@@ -12,6 +12,7 @@
 │       │   └── socket.js
 │       ├── controllers
 │       │   ├── chatController.js
+│       │   ├── roomController.js
 │       │   └── userController.js
 │       ├── middleware
 │       │   ├── auth.js
@@ -24,6 +25,7 @@
 │       ├── node.js
 │       ├── routes
 │       │   ├── chatRoutes.js
+│       │   ├── roomRoutes.js
 │       │   └── userRoutes.js
 │       ├── server.js
 │       └── tests
@@ -34,7 +36,6 @@
 │               ├── chat.test.js
 │               └── user.test.js
 ├── frontend
-│   ├── .git
 │   ├── .gitignore
 │   ├── README.md
 │   ├── node_modules
@@ -53,10 +54,15 @@
 │       ├── App.test.js
 │       ├── components
 │       │   ├── ChatRoom.js
+│       │   ├── CreateRoom.js
+│       │   ├── CreateRoomButton.js
+│       │   ├── Home.js
 │       │   ├── LoginForm.js
 │       │   ├── LogoutButton.js
+│       │   ├── ProtectedChatRoom.js
 │       │   ├── ProtectedRoute.js
-│       │   └── RegisterForm.js
+│       │   ├── RegisterForm.js
+│       │   └── RoomList.js
 │       ├── contexts
 │       │   ├── AuthContext.js
 │       │   └── ChatContext.js
@@ -128,45 +134,139 @@ module.exports = function(server) {
 ==============================
 
 -chatController.js
+// chatController.js
 const Message = require('../models/Message');
+const Room = require('../models/Room');
 
 exports.sendMessage = async (req, res, next) => {
-  const { sender, text } = req.body;
+  const { text, roomId } = req.body;
+  const { username } = req.user;
+
+  const members = await Room.client.smembers(`room:${roomId}:members`);
+
+  if (!members.includes(username)) {
+    return res.status(403).json({ error: 'You are not a member of this room' });
+  }
 
   try {
-    const messageKey = `message:${sender}:${Date.now()}`;
-    await Message.set(messageKey, JSON.stringify({ text, timestamp: Date.now() }));
+    const messageId = await Message.client.incr('message:id');
+    const timestamp = Date.now();
+    await Message.client.hset(`message:${messageId}`, 'sender', username, 'text', text, 'timestamp', timestamp);
+    await Message.client.lpush(`room:${roomId}:messages`, messageId);
 
-    res.status(201).json({ message: 'Message sent successfully' });
+    const message = { id: messageId, sender: username, text, timestamp };
+    req.io.to(roomId).emit('receiveMessage', message);
+
+    res.status(200).json({ message: 'Message sent successfully' });
   } catch (error) {
+    console.error('Send message error:', error);
     next(error);
   }
 };
 
-// chatController.js
 exports.getMessages = async (req, res, next) => {
+  const { roomId } = req.query;
+  const { username } = req.user;
+
+  const members = await Room.client.smembers(`room:${roomId}:members`);
+
+  if (!members.includes(username)) {
+    return res.status(403).json({ error: 'You are not a member of this room' });
+  }
+
   try {
-    let cursor = 0;
-    let messages = [];
-
-    do {
-      const result = await Message.scan(cursor, 'MATCH', 'message:*');
-      cursor = result[0];
-      const keys = result[1];
-
-      for (const key of keys) {
-        const message = await Message.get(key);
-        messages.push(JSON.parse(message));
-      }
-    } while (cursor !== '0');
-
-    res.json({ messages });
+    const messageIds = await Message.client.lrange(`room:${roomId}:messages`, 0, -1);
+    const messages = [];
+    for (let messageId of messageIds) {
+      const message = await Message.client.hgetall(`message:${messageId}`);
+      messages.push(message);
+    }
+    res.status(200).json({ messages });
   } catch (error) {
+    console.error('Get messages error:', error);
     next(error);
   }
 };
 
 
+==============================
+
+-roomController.js
+// roomController.js
+const Room = require('../models/Room');
+
+exports.createRoom = async (req, res, next) => {
+  const { name } = req.body;
+
+  try {
+    const roomId = await Room.createRoom(name);
+    res.status(201).json({ message: 'Room created successfully', roomId });
+  } catch (error) {
+    console.error('Create room error:', error);
+    next(error);
+  }
+};
+
+exports.joinRoom = async (req, res, next) => {
+  const { roomId } = req.params;
+  const { username } = req.user;
+
+  try {
+    await Room.joinRoom(roomId, username);
+    res.status(200).json({ message: 'Joined room successfully' });
+  } catch (error) {
+    console.error('Join room error:', error);
+    next(error);
+  }
+};
+
+exports.leaveRoom = async (req, res, next) => {
+  const { roomId } = req.params;
+  const { username } = req.user;
+
+  try {
+    await Room.leaveRoom(roomId, username);
+    res.status(200).json({ message: 'Left room successfully' });
+  } catch (error) {
+    console.error('Leave room error:', error);
+    next(error);
+  }
+};
+
+exports.getRooms = async (req, res, next) => {
+  try {
+    const rooms = await Room.getRooms();
+    res.status(200).json({ rooms });
+  } catch (error) {
+    console.error('Get rooms error:', error);
+    next(error);
+  }
+};
+
+exports.deleteRoom = async (req, res, next) => {
+  const { roomId } = req.params;
+
+  try {
+    await Room.deleteRoom(roomId);
+    res.status(200).json({ message: 'Room deleted successfully' });
+  } catch (error) {
+    console.error('Delete room error:', error);
+    next(error);
+  }
+};
+
+exports.editRoom = async (req, res, next) => {
+  const { roomId } = req.params;
+  const { newName } = req.body;
+
+  try {
+    await Room.editRoom(roomId, newName);
+    res.status(200).json({ message: 'Room edited successfully' });
+  } catch (error) {
+    console.error('Edit room error:', error);
+    next(error);
+  }
+};
 
 ==============================
 
@@ -364,8 +464,8 @@ module.exports = messageClient;
 ==============================
 
 -Room.js
+// Room.js
 const IORedis = require('ioredis');
-const client = require('../db');
 const client = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
@@ -387,9 +487,52 @@ client.on('error', (err) => {
 // Room data structure
 // id (IORedis will generate this id)
 // name
+// members
 
-module.exports = client;
+async function createRoom(name) {
+  const roomId = await client.incr('room:id');
+  await client.hset(`room:${roomId}`, 'name', name);
+  await client.sadd('rooms', roomId);
+  return roomId;
+}
 
+async function joinRoom(roomId, username) {
+  await client.sadd(`room:${roomId}:members`, username);
+}
+
+async function leaveRoom(roomId, username) {
+  await client.srem(`room:${roomId}:members`, username);
+}
+
+async function getRooms() {
+  const roomIds = await client.smembers('rooms');
+  const rooms = [];
+  for (let roomId of roomIds) {
+    const room = await client.hgetall(`room:${roomId}`);
+    room.members = await client.smembers(`room:${roomId}:members`);
+    rooms.push(room);
+  }
+  return rooms;
+}
+
+async function deleteRoom(roomId) {
+  await client.del(`room:${roomId}`);
+  await client.srem('rooms', roomId);
+}
+
+async function editRoom(roomId, newName) {
+  await client.hset(`room:${roomId}`, 'name', newName);
+}
+
+module.exports = {
+  createRoom,
+  joinRoom,
+  leaveRoom,
+  getRooms,
+  deleteRoom,
+  editRoom,
+  client,
+};
 
 ==============================
 
@@ -498,6 +641,26 @@ module.exports = router;
 
 ==============================
 
+-roomRoutes.js
+// roomRoutes.js
+const express = require('express');
+const router = express.Router();
+const roomController = require('../controllers/roomController');
+const { authenticate } = require('../middleware/auth');
+
+router.post('/create', authenticate, roomController.createRoom);
+router.post('/join/:roomId', authenticate, roomController.joinRoom);
+router.post('/leave/:roomId', authenticate, roomController.leaveRoom);
+router.get('/', authenticate, roomController.getRooms);
+router.delete('/:roomId', authenticate, roomController.deleteRoom);
+router.put('/:roomId', authenticate, roomController.editRoom);
+
+
+module.exports = router;
+
+
+==============================
+
 -userRoutes.js
 const express = require('express');
 const router = express.Router();
@@ -529,6 +692,7 @@ const cors = require("cors");
 const cookieParser = require('cookie-parser'); // Add this line
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const roomRoutes = require("./routes/roomRoutes"); // Add this line
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
 const corsOptions = {
@@ -545,6 +709,7 @@ app.use(cookieParser()); // Add this line
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/rooms", roomRoutes); // Add this line
 
 // Error handling middleware
 app.use(errorHandler);
@@ -587,29 +752,23 @@ module.exports = { server, io, client: User.client };
 
 -App.js
 // App.js
-import React from "react";
-import { Route, Routes, Link, Navigate } from "react-router-dom";
-import { AuthProvider } from "./contexts/AuthContext";
+import { useLocation } from "react-router-dom";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
+import Home from "./components/Home";
+
 import UseAuth from "./hooks/UseAuth";
 import LoginForm from "./components/LoginForm";
 import RegisterForm from "./components/RegisterForm";
 import ChatRoom from "./components/ChatRoom";
-import LogoutButton from "./components/LogoutButton.js";
-
-const ProtectedChatRoom = () => {
-  const { user } = UseAuth();
-
-  // Redirect to login if user is not logged in
-  if (!user) {
-    return <Navigate to="/login" />;
-  }
-
-  // If user is logged in, render the chat room
-  return <ChatRoom />;
-};
+import RoomList from "./components/RoomList";
+import CreateRoom from "./components/CreateRoom";
+import ProtectedChatRoom from "./components/ProtectedChatRoom";
+import LogoutButton from "./components/LogoutButton";
 
 const MainApp = () => {
-  const { user } = UseAuth();
+  const auth = UseAuth();
+  const user = auth ? auth.user : null; // Set user to null if auth is undefined
+  const location = useLocation();
 
   return (
     <div className="App">
@@ -617,34 +776,56 @@ const MainApp = () => {
       {user && <LogoutButton />}
       <nav>
         <ul>
-          <li>
-            <Link to="/login">Login</Link>
-          </li>
-          <li>
-            <Link to="/register">Register</Link>
-          </li>
-          <li>
-            <Link to="/chat">Chat</Link>
-          </li>
+          {!user && (
+            <>
+              <li>
+                <Link to="/login">Login</Link>
+              </li>
+              <li>
+                <Link to="/register">Register</Link>
+              </li>
+              <li>
+                <Link to="/">Home</Link>
+              </li>
+            </>
+          )}
+          {user && (
+            <>
+              <li>
+                <Link to="/">Home</Link>
+              </li>
+              <li>
+                <Link to="/rooms">Rooms</Link>
+              </li>
+            </>
+          )}
         </ul>
       </nav>
+
       <Routes>
         <Route path="/login" element={<LoginForm />} />
         <Route path="/register" element={<RegisterForm />} />
-        <Route path="/chat" element={<ProtectedChatRoom />} />
-        <Route path="/" element={<Navigate to="/login" />} />
+        {user && (
+          <>
+            <Route path="/rooms/:roomId" element={<ProtectedChatRoom />} />
+            <Route
+              path="/rooms"
+              element={
+                <>
+                  <RoomList />
+                  <CreateRoom />
+                </>
+              }
+            />
+          </>
+        )}
+        {user && <Route path="/" element={<Home />} />}
       </Routes>
     </div>
   );
 };
 
-const App = () => (
-  <AuthProvider>
-    <MainApp />
-  </AuthProvider>
-);
-
-export default App;
+export default MainApp;
 
 
 ==============================
@@ -663,98 +844,236 @@ test('renders learn react link', () => {
 ==============================
 
 -ChatRoom.js
+// ChatRoom.js
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
-const socket = io();
+import { useParams } from 'react-router-dom';
 
-function ChatRoom() {
-  const [message, setMessage] = useState('');
+
+const ChatRoom = () => {
   const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const { roomId } = useParams();
   const socket = io();
 
-  const fetchMessages = async () => {
-    try {
-      const response = await axios.get('http://localhost:5000/api/chat/messages');
-      setMessages(response.data.messages);
-    } catch (error) {
-      console.error('Failed to fetch messages', error);
-    }
-  };
-
   useEffect(() => {
+    const fetchMessages = async () => {
+      if (roomId) {
+        try {
+          const res = await axios.get(`/api/chat?roomId=${roomId}`);
+          setMessages(res.data.messages);
+        } catch (err) {
+          console.error(err);
+        }
+      } else {
+        console.error('roomId is undefined');
+      }
+    };
+  
     fetchMessages();
 
     socket.on('receiveMessage', (message) => {
-      setMessages((messages) => [...messages, message]);
+      setMessages((oldMessages) => [...oldMessages, message]);
     });
 
     return () => {
-      socket.disconnect();
+      socket.off('receiveMessage');
     };
-  }, []);
+  }, [roomId, socket]);
 
-  const sendMessage = (event) => {
-    event.preventDefault();
-
-    socket.emit('sendMessage', { text: message });
-    setMessage('');
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post('/api/chat', { text: newMessage, roomId });
+      setNewMessage('');
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
     <div>
-      <ul>
-        {messages.map((message, index) => (
-          <li key={index}>{message.text}</li>
-        ))}
-      </ul>
+      <h2>Room: {roomId}</h2>
+      {messages.map((message) => (
+        <div key={message.id}>
+          <p>{message.text}</p>
+          <p>By: {message.sender}</p>
+        </div>
+      ))}
       <form onSubmit={sendMessage}>
         <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type a message"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Send a message"
         />
         <button type="submit">Send</button>
       </form>
     </div>
   );
-}
+};
 
 export default ChatRoom;
 
 
 ==============================
 
+-CreateRoom.js
+// CreateRoom.js
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import UseAuth from '../hooks/UseAuth'; 
+import { useNavigate } from 'react-router-dom';
+
+const CreateRoom = () => {
+  const [roomName, setRoomName] = useState('');
+  const { user } = UseAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Redirect to login if user is not logged in
+    if (!user) {
+      navigate('/login');
+    }
+  }, [user, navigate]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    try {
+      const response = await axios.post('http://localhost:5000/api/rooms/create', 
+        { name: roomName },
+        { withCredentials: true }
+      );
+      console.log(response.data);
+      setRoomName('');
+    } catch (error) {
+      console.error('Failed to create room:', error);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="text"
+        value={roomName}
+        onChange={(event) => setRoomName(event.target.value)}
+        placeholder="Room name"
+        required
+      />
+      <button type="submit">Create Room</button>
+    </form>
+  );
+};
+
+export default CreateRoom;
+
+
+==============================
+
+-CreateRoomButton.js
+import React, { useState } from "react";
+import axios from "axios";
+
+const CreateRoomButton = () => {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [roomName, setRoomName] = useState("");
+
+  const handleOpenForm = () => {
+    setIsFormOpen(true);
+  };
+
+  const handleRoomNameChange = (event) => {
+    setRoomName(event.target.value);
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    try {
+      // Make a POST request to your server to create the room.
+      // You'll need to replace this with your actual API call.
+      await axios.post("/api/rooms/create", { name: roomName });
+
+      // Close the form and clear the room name after successful creation.
+      setIsFormOpen(false);
+      setRoomName("");
+    } catch (error) {
+      console.error("Failed to create room:", error);
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleOpenForm}>Create Room</button>
+
+      {isFormOpen && (
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={roomName}
+            onChange={handleRoomNameChange}
+            placeholder="Room name"
+            required
+          />
+          <button type="submit">Create</button>
+        </form>
+      )}
+    </div>
+  );
+};
+
+export default CreateRoomButton;
+
+
+==============================
+
+-Home.js
+// Home.js
+import React from 'react';
+
+const Home = () => {
+  return (
+    <div>
+      <h1>Welcome to Home!</h1>
+      <p>This is the home page.</p>
+    </div>
+  );
+};
+
+export default Home;
+
+
+==============================
+
 -LoginForm.js
-import React, { useContext, useState } from 'react';
+// LoginForm.js
+import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 
-function LoginForm() {
+const LoginForm = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const { setUser } = useContext(AuthContext); // Import AuthContext
+  const { setUser } = useContext(AuthContext); // Ensure AuthContext provides setUser
   const navigate = useNavigate();
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-  
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
     try {
-      const response = await axios.post('http://localhost:5000/api/users/login', { username, password });
-      console.log(response.data);
-  
-      // Set the user in the context
-      setUser({ username });
-  
-      // Redirect the user to the chat room
-      navigate('/chat');
+      const response = await axios.post(
+        'http://localhost:5000/api/users/login',
+        { username, password },
+        { withCredentials: true }
+      );
+
+      setUser({ username: response.data.username }); // Ensure response.data contains username
+      navigate('/rooms');
     } catch (error) {
-      console.error('Failed to login', error);
-  
-      // Show an error message
-      alert('Failed to login. Please check your username and password.');
+      console.error(error);
     }
   };
 
@@ -762,16 +1081,24 @@ function LoginForm() {
     <form onSubmit={handleSubmit}>
       <label>
         Username:
-        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
       </label>
       <label>
         Password:
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
       </label>
-      <button type="submit">Login</button>
+      <button type="submit">Log in</button>
     </form>
   );
-}
+};
 
 export default LoginForm;
 
@@ -810,6 +1137,30 @@ function LogoutButton() {
 }
 
 export default LogoutButton;
+
+
+==============================
+
+-ProtectedChatRoom.js
+// ProtectedChatRoom.js
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import UseAuth from '../hooks/UseAuth';
+import ChatRoom from './ChatRoom';
+
+const ProtectedChatRoom = () => {
+  const { user } = UseAuth();  // Get the user from the Auth context
+
+  // If there is no user logged in, redirect to login
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  // If a user is logged in, render the ChatRoom
+  return <ChatRoom />;
+};
+
+export default ProtectedChatRoom;
 
 
 ==============================
@@ -880,7 +1231,132 @@ export default RegisterForm;
 
 ==============================
 
+-RoomList.js
+// RoomList.js
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import UseAuth from "../hooks/UseAuth";
+import { Link } from "react-router-dom";
+
+
+
+const RoomList = () => {
+  const [rooms, setRooms] = useState([]);
+  const [editRoomName, setEditRoomName] = useState("");
+  const navigate = useNavigate();
+  const { user } = UseAuth();
+
+  useEffect(() => {
+    if (!user) {
+      navigate("/login");
+    } else {
+      const fetchRooms = async () => {
+        try {
+          const res = await axios.get("http://localhost:5000/api/rooms", {
+            withCredentials: true,
+          });
+          setRooms(res.data.rooms);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      fetchRooms();
+    }
+  }, [user, navigate]);
+
+  const joinRoom = async (roomId) => {
+    
+    try {
+      await axios.post(
+        `http://localhost:5000/api/rooms/join/${roomId}`,
+        {},
+        { withCredentials: true }
+      );
+      navigate(`/rooms/${roomId}`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const leaveRoom = async (roomId) => {
+    try {
+      await axios.post(
+        `http://localhost:5000/api/rooms/leave/${roomId}`,
+        {},
+        { withCredentials: true }
+      );
+      navigate(`/rooms`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteRoom = async (roomId) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
+        withCredentials: true,
+      });
+      const updatedRooms = rooms.filter((room) => room.id !== roomId);
+      setRooms(updatedRooms);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const editRoom = async (roomId) => {
+    try {
+      await axios.put(
+        `http://localhost:5000/api/rooms/${roomId}`,
+        { newName: editRoomName },
+        { withCredentials: true }
+      );
+      const updatedRooms = rooms.map((room) => {
+        if (room.id === roomId) {
+          room.name = editRoomName;
+        }
+        return room;
+      });
+      setRooms(updatedRooms);
+      setEditRoomName("");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  
+
+  return user ? (
+    <div>
+      <h2>Chat Rooms</h2>
+      {rooms.map((room) => (
+        <div key={room.id}>
+          <h3>
+          <Link to={`/rooms/${room.id}`}>Go to room</Link>
+          </h3>
+          <button onClick={() => joinRoom(room.id)}>Join Room</button>
+          <button onClick={() => leaveRoom(room.id)}>Leave Room</button>
+          <button onClick={() => deleteRoom(room.id)}>Delete Room</button>
+          <input
+            type="text"
+            value={editRoomName}
+            onChange={(e) => setEditRoomName(e.target.value)}
+            placeholder="New Room Name"
+          />
+          <button onClick={() => editRoom(room.id)}>Edit Room Name</button>
+        </div>
+      ))}
+    </div>
+  ) : null;
+};
+
+export default RoomList;
+
+
+==============================
+
 -AuthContext.js
+// AuthContext.js
 import React, { createContext, useState } from 'react';
 
 export const AuthContext = createContext();
@@ -943,19 +1419,21 @@ export default useChat;
 ==============================
 
 -index.js
-import React from "react";
-import ReactDOM from "react-dom";
-import { BrowserRouter as Router } from "react-router-dom";
-import App from "./App";
-import "./index.css";
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { BrowserRouter as Router } from 'react-router-dom';
+import App from './App';
+import { AuthProvider } from './contexts/AuthContext';
 
 ReactDOM.render(
   <React.StrictMode>
-    <Router>
-      <App />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <App />
+      </Router>
+    </AuthProvider>
   </React.StrictMode>,
-  document.getElementById("root")
+  document.getElementById('root')
 );
 
 

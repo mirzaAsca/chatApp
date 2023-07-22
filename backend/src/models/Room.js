@@ -44,6 +44,7 @@ async function getRooms() {
   for (let roomId of roomIds) {
     const room = await client.hgetall(`room:${roomId}`);
     room.members = await client.smembers(`room:${roomId}:members`);
+    room.id = roomId; // Add this line
     rooms.push(room);
   }
   return rooms;

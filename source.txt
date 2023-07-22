@@ -14,6 +14,7 @@
 │       │   ├── chatController.js
 │       │   ├── roomController.js
 │       │   └── userController.js
+│       ├── io.js
 │       ├── middleware
 │       │   ├── auth.js
 │       │   ├── errorHandler.js
@@ -149,10 +150,10 @@ exports.sendMessage = async (req, res, next) => {
   }
 
   try {
-    const messageId = await Message.client.incr('message:id');
+    const messageId = await Message.incr('message:id');
     const timestamp = Date.now();
-    await Message.client.hset(`message:${messageId}`, 'sender', username, 'text', text, 'timestamp', timestamp);
-    await Message.client.lpush(`room:${roomId}:messages`, messageId);
+    await Message.hset(`message:${messageId}`, 'sender', username, 'text', text, 'timestamp', timestamp);
+    await Message.lpush(`room:${roomId}:messages`, messageId);
 
     const message = { id: messageId, sender: username, text, timestamp };
     req.io.to(roomId).emit('receiveMessage', message);
@@ -160,31 +161,40 @@ exports.sendMessage = async (req, res, next) => {
     res.status(200).json({ message: 'Message sent successfully' });
   } catch (error) {
     console.error('Send message error:', error);
-    next(error);
+    res.status(500).json({ error: 'An error occurred while sending the message' });
   }
 };
 
 exports.getMessages = async (req, res, next) => {
-  const { roomId } = req.query;
+  console.log('getMessages controller called');
+
+  const roomId = req.params.roomId;
   const { username } = req.user;
 
+  console.log('roomId:', roomId);
+  console.log('username:', username);
+
   const members = await Room.client.smembers(`room:${roomId}:members`);
+
+  console.log('members:', members);
 
   if (!members.includes(username)) {
     return res.status(403).json({ error: 'You are not a member of this room' });
   }
 
   try {
-    const messageIds = await Message.client.lrange(`room:${roomId}:messages`, 0, -1);
+    const messageIds = await Message.lrange(`room:${roomId}:messages`, 0, -1);
+    console.log('messageIds:', messageIds);
     const messages = [];
     for (let messageId of messageIds) {
-      const message = await Message.client.hgetall(`message:${messageId}`);
+      const message = await Message.hgetall(`message:${messageId}`);
       messages.push(message);
     }
+    console.log('messages:', messages);
     res.status(200).json({ messages });
   } catch (error) {
     console.error('Get messages error:', error);
-    next(error);
+    res.status(500).json({ error: 'An error occurred while getting the messages', details: error.message });
   }
 };
 
@@ -360,6 +370,38 @@ exports.logout = async (req, res, next) => {
 
 ==============================
 
+-io.js
+// io.js
+const socketIo = require('socket.io');
+
+module.exports = function(server) {
+  const io = socketIo(server);
+
+  io.on('connection', (socket) => {
+    console.log('New client connected');
+
+    socket.on('joinRoom', (roomId) => {
+      socket.join(roomId);
+    });
+
+    socket.on('leaveRoom', (roomId) => {
+      socket.leave(roomId);
+    });
+
+    socket.on('sendMessage', (message) => {
+      io.to(message.roomId).emit('receiveMessage', message);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Client disconnected');
+    });
+  });
+
+  return io;
+};
+
+==============================
+
 -auth.js
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
@@ -372,28 +414,39 @@ const client = new IORedis({
 });
 
 exports.authenticate = async (req, res, next) => {
+  console.log('authenticate middleware called');
   const token = req.cookies.token;
 
+  console.log('Token:', token);
+
   if (!token) {
+    console.log('No token provided');
     return res.status(401).json({ error: 'No token provided' });
   }
 
   // Check if the token is invalidated
   const isInvalidated = await client.sismember("invalidatedTokens", token);
+  console.log('Is token invalidated?', isInvalidated);
+  
   if (isInvalidated) {
+    console.log('The token is invalidated');
     return res.status(401).json({ error: 'The token is invalidated' });
   }
 
   // Check if the JWT_SECRET is defined
   if (!process.env.JWT_SECRET) {
+    console.log('Internal server error: JWT_SECRET is not defined');
     return res.status(500).json({ error: 'Internal server error' });
   }
 
   try {
+    console.log('Before jwt.verify');
     const user = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('After jwt.verify');
     req.user = user;
     next();
   } catch (error) {
+    console.log('jwt.verify error:', error);
     return res.status(401).json({ error: 'Invalid token' });
   }
 };
@@ -510,6 +563,7 @@ async function getRooms() {
   for (let roomId of roomIds) {
     const room = await client.hgetall(`room:${roomId}`);
     room.members = await client.smembers(`room:${roomId}:members`);
+    room.id = roomId; // Add this line
     rooms.push(room);
   }
   return rooms;
@@ -628,13 +682,14 @@ setInterval(() => {}, 1000);
 ==============================
 
 -chatRoutes.js
+// chatRoutes.js
 const express = require('express');
 const router = express.Router();
 const chatController = require('../controllers/chatController');
 const { authenticate } = require('../middleware/auth');
 
 router.post('/send', authenticate, chatController.sendMessage);
-router.get('/messages', authenticate, chatController.getMessages);
+router.get('/messages/:roomId', authenticate, chatController.getMessages);
 
 module.exports = router;
 
@@ -699,6 +754,7 @@ const corsOptions = {
   origin: 'http://localhost:3000', // replace with the origin of your front-end app
   credentials: true,
 };
+
 
 // Create Express app
 const app = express();
@@ -811,9 +867,9 @@ const MainApp = () => {
             <Route
               path="/rooms"
               element={
-                <>
+                <><CreateRoom />
                   <RoomList />
-                  <CreateRoom />
+                  
                 </>
               }
             />
@@ -845,48 +901,56 @@ test('renders learn react link', () => {
 
 -ChatRoom.js
 // ChatRoom.js
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import io from 'socket.io-client';
-import { useParams } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import io from "socket.io-client";
+import { useParams } from "react-router-dom";
 
+// Create socket object outside of the ChatRoom component
+const socket = io();
 
 const ChatRoom = () => {
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const { roomId } = useParams();
-  const socket = io();
 
   useEffect(() => {
     const fetchMessages = async () => {
       if (roomId) {
         try {
-          const res = await axios.get(`/api/chat?roomId=${roomId}`);
+          const res = await axios.get(
+            `http://localhost:5000/api/chat/messages/${roomId}`,
+            { withCredentials: true }
+          );
           setMessages(res.data.messages);
         } catch (err) {
           console.error(err);
         }
       } else {
-        console.error('roomId is undefined');
+        console.error("roomId is undefined");
       }
     };
-  
+
     fetchMessages();
 
-    socket.on('receiveMessage', (message) => {
+    socket.on("receiveMessage", (message) => {
       setMessages((oldMessages) => [...oldMessages, message]);
     });
 
     return () => {
-      socket.off('receiveMessage');
+      socket.off("receiveMessage");
     };
-  }, [roomId, socket]);
+  }, [roomId]); // Removed socket from dependency array
 
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('/api/chat', { text: newMessage, roomId });
-      setNewMessage('');
+      await axios.post(
+        "http://localhost:5000/api/chat/send",
+        { text: newMessage, roomId },
+        { withCredentials: true }
+      );
+      setNewMessage("");
     } catch (err) {
       console.error(err);
     }
@@ -1144,12 +1208,13 @@ export default LogoutButton;
 -ProtectedChatRoom.js
 // ProtectedChatRoom.js
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';  // Import useParams
 import UseAuth from '../hooks/UseAuth';
 import ChatRoom from './ChatRoom';
 
 const ProtectedChatRoom = () => {
   const { user } = UseAuth();  // Get the user from the Auth context
+  const { roomId } = useParams();  // Get roomId from URL parameters
 
   // If there is no user logged in, redirect to login
   if (!user) {
@@ -1157,7 +1222,7 @@ const ProtectedChatRoom = () => {
   }
 
   // If a user is logged in, render the ChatRoom
-  return <ChatRoom />;
+  return <ChatRoom roomId={roomId} />;  // Pass roomId as a prop
 };
 
 export default ProtectedChatRoom;
@@ -1239,11 +1304,9 @@ import { useNavigate } from "react-router-dom";
 import UseAuth from "../hooks/UseAuth";
 import { Link } from "react-router-dom";
 
-
-
 const RoomList = () => {
   const [rooms, setRooms] = useState([]);
-  const [editRoomName, setEditRoomName] = useState("");
+
   const navigate = useNavigate();
   const { user } = UseAuth();
 
@@ -1256,6 +1319,7 @@ const RoomList = () => {
           const res = await axios.get("http://localhost:5000/api/rooms", {
             withCredentials: true,
           });
+          console.log(res.data.rooms); // Add this line
           setRooms(res.data.rooms);
         } catch (err) {
           console.error(err);
@@ -1266,8 +1330,22 @@ const RoomList = () => {
     }
   }, [user, navigate]);
 
+  const deleteRoom = async (roomId) => {
+    try {
+      await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
+        withCredentials: true,
+      });
+      // Refresh room list after deletion
+      const res = await axios.get("http://localhost:5000/api/rooms", {
+        withCredentials: true,
+      });
+      setRooms(res.data.rooms);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const joinRoom = async (roomId) => {
-    
     try {
       await axios.post(
         `http://localhost:5000/api/rooms/join/${roomId}`,
@@ -1293,57 +1371,17 @@ const RoomList = () => {
     }
   };
 
-  const deleteRoom = async (roomId) => {
-    try {
-      await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
-        withCredentials: true,
-      });
-      const updatedRooms = rooms.filter((room) => room.id !== roomId);
-      setRooms(updatedRooms);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const editRoom = async (roomId) => {
-    try {
-      await axios.put(
-        `http://localhost:5000/api/rooms/${roomId}`,
-        { newName: editRoomName },
-        { withCredentials: true }
-      );
-      const updatedRooms = rooms.map((room) => {
-        if (room.id === roomId) {
-          room.name = editRoomName;
-        }
-        return room;
-      });
-      setRooms(updatedRooms);
-      setEditRoomName("");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  
-
   return user ? (
     <div>
       <h2>Chat Rooms</h2>
       {rooms.map((room) => (
         <div key={room.id}>
           <h3>
-          <Link to={`/rooms/${room.id}`}>Go to room</Link>
+            <Link to={`/rooms/${room.id}`}>{room.name}</Link>
           </h3>
           <button onClick={() => joinRoom(room.id)}>Join Room</button>
           <button onClick={() => leaveRoom(room.id)}>Leave Room</button>
           <button onClick={() => deleteRoom(room.id)}>Delete Room</button>
-          <input
-            type="text"
-            value={editRoomName}
-            onChange={(e) => setEditRoomName(e.target.value)}
-            placeholder="New Room Name"
-          />
-          <button onClick={() => editRoom(room.id)}>Edit Room Name</button>
         </div>
       ))}
     </div>

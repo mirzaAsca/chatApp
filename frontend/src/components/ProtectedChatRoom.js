@@ -1,11 +1,12 @@
 // ProtectedChatRoom.js
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';  // Import useParams
 import UseAuth from '../hooks/UseAuth';
 import ChatRoom from './ChatRoom';
 
 const ProtectedChatRoom = () => {
   const { user } = UseAuth();  // Get the user from the Auth context
+  const { roomId } = useParams();  // Get roomId from URL parameters
 
   // If there is no user logged in, redirect to login
   if (!user) {
@@ -13,7 +14,7 @@ const ProtectedChatRoom = () => {
   }
 
   // If a user is logged in, render the ChatRoom
-  return <ChatRoom />;
+  return <ChatRoom roomId={roomId} />;  // Pass roomId as a prop
 };
 
 export default ProtectedChatRoom;

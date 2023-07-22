@@ -22,11 +22,20 @@ const corsOptions = {
   credentials: true,
 };
 
+
 // Create Express app
 const app = express();
+
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser()); // Add this line
+
+// Add Socket.IO instance to the request object
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 
 // Routes
 app.use("/api/users", userRoutes);

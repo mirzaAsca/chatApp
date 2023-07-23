@@ -1,7 +1,8 @@
+//UserController.js
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const IORedis = require('ioredis');
+const IORedis = require("ioredis");
 let redis = User.client;
 
 exports.register = async (req, res, next) => {
@@ -48,38 +49,36 @@ exports.login = async (req, res, next) => {
     });
 
     // Set the JWT token in an HTTP-only cookie
-    res.cookie('token', token, {
+    res.cookie("token", token, {
       httpOnly: true,
-      sameSite: 'strict', // or 'lax' depending on your needs
+      sameSite: "strict", // or 'lax' depending on your needs
       secure: false, // set this to true if your website runs on https, otherwise set it to false
-      maxAge: 3600000 // token expiration time in milliseconds, this is equal to 1 hour
+      maxAge: 3600000, // token expiration time in milliseconds, this is equal to 1 hour
     });
 
-    res.status(200).json({ message: "User logged in successfully" });
+    res.status(200).json({ message: "User logged in successfully", username });
   } catch (error) {
     console.error("Login error:", error);
     next(error);
   }
 };
 
-
 exports.logout = async (req, res, next) => {
   // Add the existing token to the invalidated tokens set
   const token = req.cookies.token;
   if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
+    return res.status(401).json({ error: "No token provided" });
   }
 
   try {
     await redis.sadd("invalidatedTokens", token);
 
     // Clear the token cookie
-    res.clearCookie('token');
+    res.clearCookie("token");
 
-    res.status(200).json({ message: 'User logged out successfully' });
+    res.status(200).json({ message: "User logged out successfully" });
   } catch (error) {
     console.error("Logout error:", error);
     next(error);
   }
 };
-

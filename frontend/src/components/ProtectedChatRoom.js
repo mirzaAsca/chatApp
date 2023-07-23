@@ -14,7 +14,7 @@ const ProtectedChatRoom = () => {
   }
 
   // If a user is logged in, render the ChatRoom
-  return <ChatRoom roomId={roomId} />;  // Pass roomId as a prop
+  return <ChatRoom user={user} roomId={roomId} />;  // Pass user and roomId as props
 };
 
 export default ProtectedChatRoom;

@@ -19,14 +19,19 @@ exports.sendMessage = async (req, res, next) => {
     await Message.lpush(`room:${roomId}:messages`, messageId);
 
     const message = { id: messageId, sender: username, text, timestamp };
+    console.log('Emitting receiveMessage event for room', roomId, 'with message', message);  // Added log
     req.io.to(roomId).emit('receiveMessage', message);
+
+     // Add a log to indicate that the message was sent successfully
+     console.log('Message sent successfully:', message);
 
     res.status(200).json({ message: 'Message sent successfully' });
   } catch (error) {
     console.error('Send message error:', error);
-    res.status(500).json({ error: 'An error occurred while sending the message', details: error.message });  // Add more detailed error message
+    res.status(500).json({ error: 'An error occurred while sending the message', details: error.message });
   }
 };
+
 
 
 exports.getMessages = async (req, res, next) => {

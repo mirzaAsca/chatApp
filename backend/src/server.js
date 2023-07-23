@@ -11,24 +11,28 @@ process.on('uncaughtException', (err, origin) => {
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
-const cookieParser = require('cookie-parser'); // Add this line
+const cookieParser = require('cookie-parser');
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
-const roomRoutes = require("./routes/roomRoutes"); // Add this line
+const roomRoutes = require("./routes/roomRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
 const corsOptions = {
-  origin: 'http://localhost:3000', // replace with the origin of your front-end app
+  origin: 'http://localhost:3000',
   credentials: true,
 };
-
 
 // Create Express app
 const app = express();
 
+// Add Socket.IO instance to the request object
+const server = http.createServer(app);
+
+const io = require("./config/socket")(server, corsOptions);
+
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use(cookieParser()); // Add this line
+app.use(cookieParser());
 
 // Add Socket.IO instance to the request object
 app.use((req, res, next) => {
@@ -36,24 +40,14 @@ app.use((req, res, next) => {
   next();
 });
 
-
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/chat", chatRoutes);
-app.use("/api/rooms", roomRoutes); // Add this line
+app.use("/api/rooms", roomRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
 
-// Create HTTP server
-const server = http.createServer(app);
-
-// Connect socket.io with the server
-const io = require("./config/socket")(server);
-
 server.listen(process.env.PORT || 5000, () => {
   console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
-
-// Export the server and io for other modules to use
-module.exports = { server, io, client: User.client };

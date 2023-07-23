@@ -105,28 +105,33 @@ module.exports = client;
 -socket.js
 const socketIo = require('socket.io');
 
-module.exports = function(server) {
-  const io = socketIo(server);
+module.exports = function(server, corsOptions) {
+  const io = socketIo(server, {
+    cors: corsOptions
+  });
 
   io.on('connection', (socket) => {
-    console.log('New client connected');
-
+    console.log('New client connected, socket id:', socket.id);
+  
     socket.on('joinRoom', (roomId) => {
       socket.join(roomId);
+      console.log('Socket', socket.id, 'joined room', roomId);
     });
-
+  
     socket.on('leaveRoom', (roomId) => {
       socket.leave(roomId);
     });
-
+  
     socket.on('sendMessage', (message) => {
+      // Emit the receiveMessage event to all clients in the room
       io.to(message.roomId).emit('receiveMessage', message);
     });
-
+  
     socket.on('disconnect', () => {
       console.log('Client disconnected');
     });
   });
+  
 
   return io;
 };
@@ -156,14 +161,20 @@ exports.sendMessage = async (req, res, next) => {
     await Message.lpush(`room:${roomId}:messages`, messageId);
 
     const message = { id: messageId, sender: username, text, timestamp };
+    console.log('Emitting receiveMessage event for room', roomId, 'with message', message);  // Added log
     req.io.to(roomId).emit('receiveMessage', message);
+
+     // Add a log to indicate that the message was sent successfully
+     console.log('Message sent successfully:', message);
 
     res.status(200).json({ message: 'Message sent successfully' });
   } catch (error) {
     console.error('Send message error:', error);
-    res.status(500).json({ error: 'An error occurred while sending the message' });
+    res.status(500).json({ error: 'An error occurred while sending the message', details: error.message });
   }
 };
+
+
 
 exports.getMessages = async (req, res, next) => {
   console.log('getMessages controller called');
@@ -188,6 +199,7 @@ exports.getMessages = async (req, res, next) => {
     const messages = [];
     for (let messageId of messageIds) {
       const message = await Message.hgetall(`message:${messageId}`);
+      message.id = messageId; // Add this line
       messages.push(message);
     }
     console.log('messages:', messages);
@@ -281,10 +293,11 @@ exports.editRoom = async (req, res, next) => {
 ==============================
 
 -userController.js
+//UserController.js
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const IORedis = require('ioredis');
+const IORedis = require("ioredis");
 let redis = User.client;
 
 exports.register = async (req, res, next) => {
@@ -331,41 +344,39 @@ exports.login = async (req, res, next) => {
     });
 
     // Set the JWT token in an HTTP-only cookie
-    res.cookie('token', token, {
+    res.cookie("token", token, {
       httpOnly: true,
-      sameSite: 'strict', // or 'lax' depending on your needs
+      sameSite: "strict", // or 'lax' depending on your needs
       secure: false, // set this to true if your website runs on https, otherwise set it to false
-      maxAge: 3600000 // token expiration time in milliseconds, this is equal to 1 hour
+      maxAge: 3600000, // token expiration time in milliseconds, this is equal to 1 hour
     });
 
-    res.status(200).json({ message: "User logged in successfully" });
+    res.status(200).json({ message: "User logged in successfully", username });
   } catch (error) {
     console.error("Login error:", error);
     next(error);
   }
 };
 
-
 exports.logout = async (req, res, next) => {
   // Add the existing token to the invalidated tokens set
   const token = req.cookies.token;
   if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
+    return res.status(401).json({ error: "No token provided" });
   }
 
   try {
     await redis.sadd("invalidatedTokens", token);
 
     // Clear the token cookie
-    res.clearCookie('token');
+    res.clearCookie("token");
 
-    res.status(200).json({ message: 'User logged out successfully' });
+    res.status(200).json({ message: "User logged out successfully" });
   } catch (error) {
     console.error("Logout error:", error);
     next(error);
   }
 };
-
 
 
 ==============================
@@ -414,41 +425,40 @@ const client = new IORedis({
 });
 
 exports.authenticate = async (req, res, next) => {
-  console.log('authenticate middleware called');
+  console.log('authenticate middleware called');  // Log that the middleware has been called
+
   const token = req.cookies.token;
 
-  console.log('Token:', token);
-
   if (!token) {
-    console.log('No token provided');
+    console.log('No token provided');  // Log that no token was provided
     return res.status(401).json({ error: 'No token provided' });
   }
 
   // Check if the token is invalidated
   const isInvalidated = await client.sismember("invalidatedTokens", token);
-  console.log('Is token invalidated?', isInvalidated);
-  
   if (isInvalidated) {
-    console.log('The token is invalidated');
+    console.log('The token is invalidated');  // Log that the token was invalidated
     return res.status(401).json({ error: 'The token is invalidated' });
   }
 
   // Check if the JWT_SECRET is defined
   if (!process.env.JWT_SECRET) {
-    console.log('Internal server error: JWT_SECRET is not defined');
+    console.log('Internal server error - JWT_SECRET not defined');  // Log that JWT_SECRET is not defined
     return res.status(500).json({ error: 'Internal server error' });
   }
 
-  try {
-    console.log('Before jwt.verify');
+try {
+    console.log('Before jwt.verify');  // Add this line
     const user = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('After jwt.verify');
+    console.log('After jwt.verify');  // Add this line
     req.user = user;
     next();
-  } catch (error) {
-    console.log('jwt.verify error:', error);
+} catch (error) {
+    console.log('jwt.verify error:', error.message);
     return res.status(401).json({ error: 'Invalid token' });
-  }
+}
+
+
 };
 
 
@@ -725,6 +735,7 @@ router.post('/register', userController.register);
 router.post('/login', userController.login);
 router.post('/logout', userController.logout);
 
+
 module.exports = router;
 
 
@@ -744,44 +755,46 @@ process.on('uncaughtException', (err, origin) => {
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
-const cookieParser = require('cookie-parser'); // Add this line
+const cookieParser = require('cookie-parser');
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
-const roomRoutes = require("./routes/roomRoutes"); // Add this line
+const roomRoutes = require("./routes/roomRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
 const corsOptions = {
-  origin: 'http://localhost:3000', // replace with the origin of your front-end app
+  origin: 'http://localhost:3000',
   credentials: true,
 };
 
-
 // Create Express app
 const app = express();
+
+// Add Socket.IO instance to the request object
+const server = http.createServer(app);
+
+const io = require("./config/socket")(server, corsOptions);
+
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use(cookieParser()); // Add this line
+app.use(cookieParser());
+
+// Add Socket.IO instance to the request object
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/chat", chatRoutes);
-app.use("/api/rooms", roomRoutes); // Add this line
+app.use("/api/rooms", roomRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
 
-// Create HTTP server
-const server = http.createServer(app);
-
-// Connect socket.io with the server
-const io = require("./config/socket")(server);
-
 server.listen(process.env.PORT || 5000, () => {
   console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
-
-// Export the server and io for other modules to use
-module.exports = { server, io, client: User.client };
 
 
 ==============================
@@ -907,14 +920,23 @@ import io from "socket.io-client";
 import { useParams } from "react-router-dom";
 
 // Create socket object outside of the ChatRoom component
-const socket = io();
+let socket;
 
-const ChatRoom = () => {
+const ChatRoom = ({ user }) => {  // Receive the user object as a prop
+  console.log("User in ChatRoom:", user);  // Add this line
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const { roomId } = useParams();
 
   useEffect(() => {
+    // Connect to the socket
+    socket = io('http://localhost:5000');
+  
+    socket.on('connect', () => {
+      socket.emit('joinRoom', roomId);
+      console.log('Socket connected:', socket.connected);
+    });
+
     const fetchMessages = async () => {
       if (roomId) {
         try {
@@ -933,8 +955,13 @@ const ChatRoom = () => {
 
     fetchMessages();
 
-    socket.on("receiveMessage", (message) => {
-      setMessages((oldMessages) => [...oldMessages, message]);
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.connected);  // Added log
+    });
+
+    socket.on('receiveMessage', (message) => {
+      console.log("Received message:", message);  // Added log
+      setMessages((prevMessages) => [...prevMessages, message]);
     });
 
     return () => {
@@ -945,22 +972,19 @@ const ChatRoom = () => {
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(
-        "http://localhost:5000/api/chat/send",
-        { text: newMessage, roomId },
-        { withCredentials: true }
-      );
+      const message = { text: newMessage, roomId, sender: user.username }; // use user.username here
+      socket.emit('sendMessage', message);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
-
+  
   return (
     <div>
       <h2>Room: {roomId}</h2>
-      {messages.map((message) => (
-        <div key={message.id}>
+      {messages.map((message, index) => (
+        <div key={index}>
           <p>{message.text}</p>
           <p>By: {message.sender}</p>
         </div>
@@ -1133,7 +1157,7 @@ const LoginForm = () => {
         { username, password },
         { withCredentials: true }
       );
-
+      console.log('RESPONSE.DATA:',response.data); // Add this line
       setUser({ username: response.data.username }); // Ensure response.data contains username
       navigate('/rooms');
     } catch (error) {
@@ -1222,7 +1246,7 @@ const ProtectedChatRoom = () => {
   }
 
   // If a user is logged in, render the ChatRoom
-  return <ChatRoom roomId={roomId} />;  // Pass roomId as a prop
+  return <ChatRoom user={user} roomId={roomId} />;  // Pass user and roomId as props
 };
 
 export default ProtectedChatRoom;
@@ -1292,7 +1316,6 @@ function RegisterForm() {
 
 
 export default RegisterForm;
-
 
 ==============================
 
@@ -1435,6 +1458,7 @@ import { useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 
 const UseAuth = () => {
+  
   return useContext(AuthContext);
 };
 
@@ -1458,21 +1482,25 @@ export default useChat;
 
 -index.js
 import React from 'react';
-import ReactDOM from 'react-dom';
+import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
+import reportWebVitals from "./reportWebVitals";
 
-ReactDOM.render(
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
   <React.StrictMode>
     <AuthProvider>
       <Router>
         <App />
       </Router>
     </AuthProvider>
-  </React.StrictMode>,
-  document.getElementById('root')
+    </React.StrictMode>
 );
+
+reportWebVitals();
 
 
 ==============================

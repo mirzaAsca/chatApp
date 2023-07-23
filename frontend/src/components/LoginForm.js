@@ -20,7 +20,7 @@ const LoginForm = () => {
         { username, password },
         { withCredentials: true }
       );
-
+      console.log('RESPONSE.DATA:',response.data); // Add this line
       setUser({ username: response.data.username }); // Ensure response.data contains username
       navigate('/rooms');
     } catch (error) {

@@ -5,14 +5,23 @@ import io from "socket.io-client";
 import { useParams } from "react-router-dom";
 
 // Create socket object outside of the ChatRoom component
-const socket = io();
+let socket;
 
-const ChatRoom = () => {
+const ChatRoom = ({ user }) => {  // Receive the user object as a prop
+  console.log("User in ChatRoom:", user);  // Add this line
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const { roomId } = useParams();
 
   useEffect(() => {
+    // Connect to the socket
+    socket = io('http://localhost:5000');
+  
+    socket.on('connect', () => {
+      socket.emit('joinRoom', roomId);
+      console.log('Socket connected:', socket.connected);
+    });
+
     const fetchMessages = async () => {
       if (roomId) {
         try {
@@ -20,6 +29,7 @@ const ChatRoom = () => {
             `http://localhost:5000/api/chat/messages/${roomId}`,
             { withCredentials: true }
           );
+          console.log("Fetched messages:", res.data.messages); // Add this line
           setMessages(res.data.messages);
         } catch (err) {
           console.error(err);
@@ -28,11 +38,17 @@ const ChatRoom = () => {
         console.error("roomId is undefined");
       }
     };
+    
 
     fetchMessages();
 
-    socket.on("receiveMessage", (message) => {
-      setMessages((oldMessages) => [...oldMessages, message]);
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.connected);  // Added log
+    });
+
+    socket.on('receiveMessage', (message) => {
+      console.log("Received message:", message);  // Added log
+      setMessages((prevMessages) => [...prevMessages, message]);
     });
 
     return () => {
@@ -43,22 +59,19 @@ const ChatRoom = () => {
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(
-        "http://localhost:5000/api/chat/send",
-        { text: newMessage, roomId },
-        { withCredentials: true }
-      );
+      const message = { text: newMessage, roomId, sender: user.username }; // use user.username here
+      socket.emit('sendMessage', message);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
-
+  
   return (
     <div>
       <h2>Room: {roomId}</h2>
-      {messages.map((message) => (
-        <div key={message.id}>
+      {messages.map((message, index) => (
+        <div key={index}>
           <p>{message.text}</p>
           <p>By: {message.sender}</p>
         </div>

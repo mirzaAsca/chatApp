@@ -7,19 +7,20 @@ import { useParams } from "react-router-dom";
 // Create socket object outside of the ChatRoom component
 let socket;
 
-const ChatRoom = ({ user }) => {  // Receive the user object as a prop
-  console.log("User in ChatRoom:", user);  // Add this line
+const ChatRoom = ({ user }) => {
+  // Receive the user object as a prop
+  console.log("User in ChatRoom:", user); // Add this line
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const { roomId } = useParams();
 
   useEffect(() => {
     // Connect to the socket
-    socket = io('http://localhost:5000');
-  
-    socket.on('connect', () => {
-      socket.emit('joinRoom', roomId);
-      console.log('Socket connected:', socket.connected);
+    socket = io("http://localhost:5000");
+
+    socket.on("connect", () => {
+      socket.emit("joinRoom", roomId);
+      console.log("Socket connected:", socket.connected);
     });
 
     const fetchMessages = async () => {
@@ -38,16 +39,15 @@ const ChatRoom = ({ user }) => {  // Receive the user object as a prop
         console.error("roomId is undefined");
       }
     };
-    
 
     fetchMessages();
 
-    socket.on('connect', () => {
-      console.log('Socket connected:', socket.connected);  // Added log
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.connected); // Added log
     });
 
-    socket.on('receiveMessage', (message) => {
-      console.log("Received message:", message);  // Added log
+    socket.on("receiveMessage", (message) => {
+      console.log("Received message:", message); // Added log
       setMessages((prevMessages) => [...prevMessages, message]);
     });
 
@@ -60,13 +60,13 @@ const ChatRoom = ({ user }) => {  // Receive the user object as a prop
     e.preventDefault();
     try {
       const message = { text: newMessage, roomId, sender: user.username }; // use user.username here
-      socket.emit('sendMessage', message);
+      socket.emit("sendMessage", message);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
-  
+
   return (
     <div>
       <h2>Room: {roomId}</h2>

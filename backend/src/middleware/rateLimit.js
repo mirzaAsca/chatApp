@@ -1,20 +1,37 @@
-const IORedis = require('ioredis');
-const client = new IORedis();
+const socketio = require('socket.io');
+const Redis = require('ioredis');
+const { RateLimiterRedis } = require('rate-limiter-flexible');
 
-exports.rateLimiter = async (req, res, next) => {
-  const { username } = req.user;
+const redisClient = new Redis({
+  host: process.env.REDIS_HOST,
+  port: process.env.REDIS_PORT,
+  password: process.env.REDIS_PASSWORD,
+});
 
-  try {
-    const record = await client.get(username);
+const rateLimiter = new RateLimiterRedis({
+  storeClient: redisClient,
+  keyPrefix: 'middleware',
+  points: 3, // 10 requests
+  duration: 60, // per 60 seconds by IP
+});
 
-    if (record !== null) {
-      return res.status(429).json({ message: 'Too many messages, please try again later' });
-    } else {
-      // Set the key to expire in 1 second
-      await client.set(username, 'EX', 1, 'NX');
-      next();
-    }
-  } catch (err) {
-    throw err;
-  }
-};
+const io = socketio(server, corsOptions);
+
+io.on('connection', (socket) => {
+  console.log('New client connected');
+
+  socket.on('chat message', (msg) => {
+    rateLimiter.consume(socket.id) // use socket.id as unique user identifier
+      .then(() => {
+        io.emit('chat message', msg);
+      })
+      .catch((rejRes) => {
+        console.log(`Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`);
+        // Handle rate limit exceed. You might want to send a message to the user, close the connection, etc.
+      });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
+});

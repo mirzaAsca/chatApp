@@ -1,4 +1,14 @@
 require("dotenv").config();
+const http = require("http");
+const express = require("express");
+const cors = require("cors");
+const cookieParser = require('cookie-parser');
+const userRoutes = require("./routes/userRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+const roomRoutes = require("./routes/roomRoutes");
+const { errorHandler } = require("./middleware/errorHandler");
+//const rateLimiter = require("./middleware/rateLimit");
+const User = require("./models/User");
 
 process.on('unhandledRejection', (reason, promise) => {
   console.log('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -8,15 +18,6 @@ process.on('uncaughtException', (err, origin) => {
   console.log('Caught exception:', err, 'Exception origin:', origin);
 });
 
-const http = require("http");
-const express = require("express");
-const cors = require("cors");
-const cookieParser = require('cookie-parser');
-const userRoutes = require("./routes/userRoutes");
-const chatRoutes = require("./routes/chatRoutes");
-const roomRoutes = require("./routes/roomRoutes");
-const { errorHandler } = require("./middleware/errorHandler");
-const User = require("./models/User");
 const corsOptions = {
   origin: 'http://localhost:3000',
   credentials: true,
@@ -27,12 +28,13 @@ const app = express();
 
 // Add Socket.IO instance to the request object
 const server = http.createServer(app);
-
 const io = require("./config/socket")(server, corsOptions);
 
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
+
+//app.use('/api/chat/messages', rateLimiter)
 
 // Add Socket.IO instance to the request object
 app.use((req, res, next) => {

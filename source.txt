@@ -104,34 +104,36 @@ module.exports = client;
 
 -socket.js
 const socketIo = require('socket.io');
+const chatController = require('../controllers/chatController');
 
-module.exports = function(server, corsOptions) {
-  const io = socketIo(server, {
+module.exports = (server, corsOptions) => {
+  const io = require('socket.io')(server, {
     cors: corsOptions
   });
 
   io.on('connection', (socket) => {
-    console.log('New client connected, socket id:', socket.id);
-  
+    console.log('New client connected:', socket.id);
+
     socket.on('joinRoom', (roomId) => {
       socket.join(roomId);
-      console.log('Socket', socket.id, 'joined room', roomId);
+      console.log(`Socket ${socket.id} joined room ${roomId}`);
     });
-  
-    socket.on('leaveRoom', (roomId) => {
-      socket.leave(roomId);
+
+    socket.on('sendMessage', async (message) => {
+      console.log('Received sendMessage event with message', message);
+      const req = { body: message, user: { username: message.sender }, io: io };
+      try {
+        const result = await chatController.sendMessage(req);
+        console.log(result);
+      } catch (error) {
+        console.error(error.message);
+      }
     });
-  
-    socket.on('sendMessage', (message) => {
-      // Emit the receiveMessage event to all clients in the room
-      io.to(message.roomId).emit('receiveMessage', message);
-    });
-  
+
     socket.on('disconnect', () => {
-      console.log('Client disconnected');
+      console.log('Client disconnected:', socket.id);
     });
   });
-  
 
   return io;
 };
@@ -144,14 +146,14 @@ module.exports = function(server, corsOptions) {
 const Message = require('../models/Message');
 const Room = require('../models/Room');
 
-exports.sendMessage = async (req, res, next) => {
+exports.sendMessage = async (req) => {
   const { text, roomId } = req.body;
   const { username } = req.user;
 
   const members = await Room.client.smembers(`room:${roomId}:members`);
 
   if (!members.includes(username)) {
-    return res.status(403).json({ error: 'You are not a member of this room' });
+    throw new Error('You are not a member of this room');
   }
 
   try {
@@ -161,18 +163,15 @@ exports.sendMessage = async (req, res, next) => {
     await Message.lpush(`room:${roomId}:messages`, messageId);
 
     const message = { id: messageId, sender: username, text, timestamp };
-    console.log('Emitting receiveMessage event for room', roomId, 'with message', message);  // Added log
     req.io.to(roomId).emit('receiveMessage', message);
 
-     // Add a log to indicate that the message was sent successfully
-     console.log('Message sent successfully:', message);
-
-    res.status(200).json({ message: 'Message sent successfully' });
+    return { status: 200, message: 'Message sent successfully' };
   } catch (error) {
     console.error('Send message error:', error);
-    res.status(500).json({ error: 'An error occurred while sending the message', details: error.message });
+    throw new Error('An error occurred while sending the message');
   }
 };
+
 
 
 
@@ -195,13 +194,13 @@ exports.getMessages = async (req, res, next) => {
 
   try {
     const messageIds = await Message.lrange(`room:${roomId}:messages`, 0, -1);
-    console.log('messageIds:', messageIds);
     const messages = [];
     for (let messageId of messageIds) {
       const message = await Message.hgetall(`message:${messageId}`);
-      message.id = messageId; // Add this line
+      message.id = messageId;
       messages.push(message);
     }
+    
     console.log('messages:', messages);
     res.status(200).json({ messages });
   } catch (error) {
@@ -474,24 +473,23 @@ exports.errorHandler = (err, req, res, next) => {
 ==============================
 
 -rateLimit.js
-const IORedis = require('ioredis');
+const IORedis = require("ioredis");
 const client = new IORedis();
 
-exports.rateLimiter = async (req, res, next) => {
-  const { username } = req.user;
-
+exports.rateLimiter = async (username, errorHandler) => {
   try {
     const record = await client.get(username);
 
     if (record !== null) {
-      return res.status(429).json({ message: 'Too many messages, please try again later' });
+      errorHandler(new Error("Too many messages, please try again later"));
+      return false; // Return false to indicate the user is rate limited
     } else {
       // Set the key to expire in 1 second
-      await client.set(username, 'EX', 1, 'NX');
-      next();
+      await client.set(username, "", "EX", 10, "NX");
+      return true; // Return true to indicate the user is not rate limited
     }
   } catch (err) {
-    throw err;
+    errorHandler(err);
   }
 };
 
@@ -692,14 +690,21 @@ setInterval(() => {}, 1000);
 ==============================
 
 -chatRoutes.js
-// chatRoutes.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const chatController = require('../controllers/chatController');
-const { authenticate } = require('../middleware/auth');
+const chatController = require("../controllers/chatController");
+const { authenticate } = require("../middleware/auth");
+const rateLimit = require("express-rate-limit");
 
-router.post('/send', authenticate, chatController.sendMessage);
-router.get('/messages/:roomId', authenticate, chatController.getMessages);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // limit each IP to 100 requests per windowMs
+  message:
+    "Too many messages created from this IP, please try again after an hour",
+});
+
+router.post("/send", authenticate, apiLimiter, chatController.sendMessage);
+router.get("/messages/:roomId", authenticate, chatController.getMessages);
 
 module.exports = router;
 
@@ -743,15 +748,6 @@ module.exports = router;
 
 -server.js
 require("dotenv").config();
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.log('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (err, origin) => {
-  console.log('Caught exception:', err, 'Exception origin:', origin);
-});
-
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
@@ -761,6 +757,15 @@ const chatRoutes = require("./routes/chatRoutes");
 const roomRoutes = require("./routes/roomRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
 const User = require("./models/User");
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.log('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err, origin) => {
+  console.log('Caught exception:', err, 'Exception origin:', origin);
+});
+
 const corsOptions = {
   origin: 'http://localhost:3000',
   credentials: true,
@@ -771,7 +776,6 @@ const app = express();
 
 // Add Socket.IO instance to the request object
 const server = http.createServer(app);
-
 const io = require("./config/socket")(server, corsOptions);
 
 app.use(cors(corsOptions));
@@ -944,6 +948,7 @@ const ChatRoom = ({ user }) => {  // Receive the user object as a prop
             `http://localhost:5000/api/chat/messages/${roomId}`,
             { withCredentials: true }
           );
+          console.log("Fetched messages:", res.data.messages); // Add this line
           setMessages(res.data.messages);
         } catch (err) {
           console.error(err);
@@ -952,6 +957,7 @@ const ChatRoom = ({ user }) => {  // Receive the user object as a prop
         console.error("roomId is undefined");
       }
     };
+    
 
     fetchMessages();
 

@@ -2,14 +2,14 @@
 const Message = require('../models/Message');
 const Room = require('../models/Room');
 
-exports.sendMessage = async (req, res, next) => {
+exports.sendMessage = async (req) => {
   const { text, roomId } = req.body;
   const { username } = req.user;
 
   const members = await Room.client.smembers(`room:${roomId}:members`);
 
   if (!members.includes(username)) {
-    return res.status(403).json({ error: 'You are not a member of this room' });
+    throw new Error('You are not a member of this room');
   }
 
   try {
@@ -19,18 +19,15 @@ exports.sendMessage = async (req, res, next) => {
     await Message.lpush(`room:${roomId}:messages`, messageId);
 
     const message = { id: messageId, sender: username, text, timestamp };
-    console.log('Emitting receiveMessage event for room', roomId, 'with message', message);  // Added log
     req.io.to(roomId).emit('receiveMessage', message);
 
-     // Add a log to indicate that the message was sent successfully
-     console.log('Message sent successfully:', message);
-
-    res.status(200).json({ message: 'Message sent successfully' });
+    return { status: 200, message: 'Message sent successfully' };
   } catch (error) {
     console.error('Send message error:', error);
-    res.status(500).json({ error: 'An error occurred while sending the message', details: error.message });
+    throw new Error('An error occurred while sending the message');
   }
 };
+
 
 
 
@@ -53,13 +50,13 @@ exports.getMessages = async (req, res, next) => {
 
   try {
     const messageIds = await Message.lrange(`room:${roomId}:messages`, 0, -1);
-    console.log('messageIds:', messageIds);
     const messages = [];
     for (let messageId of messageIds) {
       const message = await Message.hgetall(`message:${messageId}`);
-      message.id = messageId; // Add this line
+      message.id = messageId;
       messages.push(message);
     }
+    
     console.log('messages:', messages);
     res.status(200).json({ messages });
   } catch (error) {

@@ -1,4 +1,3 @@
-//UserController.js
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
@@ -76,9 +75,13 @@ exports.logout = async (req, res, next) => {
     // Clear the token cookie
     res.clearCookie("token");
 
+    // Emit logout event
+    io.emit('logout', req.user.username); // assuming req.user.username is available
+
     res.status(200).json({ message: "User logged out successfully" });
   } catch (error) {
     console.error("Logout error:", error);
     next(error);
   }
 };
+

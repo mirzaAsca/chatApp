@@ -1,6 +1,20 @@
 // roomController.js
 const Room = require('../models/Room');
 
+
+exports.getRoomMembers = async (req, res, next) => {
+  const { roomId } = req.params;
+
+  try {
+    const members = await Room.client.smembers(`room:${roomId}:members`);
+    res.status(200).json({ members });
+  } catch (error) {
+    console.error('Get room members error:', error);
+    next(error);
+  }
+};
+
+
 exports.createRoom = async (req, res, next) => {
   const { name } = req.body;
 
@@ -73,3 +87,4 @@ exports.editRoom = async (req, res, next) => {
     next(error);
   }
 };
+

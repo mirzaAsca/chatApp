@@ -58,9 +58,9 @@ const MainApp = () => {
             <Route
               path="/rooms"
               element={
-                <><CreateRoom />
+                <>
                   <RoomList />
-                  
+                  <CreateRoom />
                 </>
               }
             />

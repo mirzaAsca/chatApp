@@ -10,6 +10,9 @@ router.post('/leave/:roomId', authenticate, roomController.leaveRoom);
 router.get('/', authenticate, roomController.getRooms);
 router.delete('/:roomId', authenticate, roomController.deleteRoom);
 router.put('/:roomId', authenticate, roomController.editRoom);
+router.get('/:roomId/members', authenticate, roomController.getRoomMembers);
+
+
 
 
 module.exports = router;

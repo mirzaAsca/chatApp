@@ -105,6 +105,21 @@ module.exports = client;
 -socket.js
 const socketIo = require('socket.io');
 const chatController = require('../controllers/chatController');
+const Redis = require('ioredis');
+const { RateLimiterRedis } = require('rate-limiter-flexible');
+
+const redisClient = new Redis({
+  host: process.env.REDIS_HOST,
+  port: process.env.REDIS_PORT,
+  password: process.env.REDIS_PASSWORD,
+});
+
+const rateLimiter = new RateLimiterRedis({
+  storeClient: redisClient,
+  keyPrefix: 'middleware',
+  points: 10, // 10 requests
+  duration: 60, // per 60 seconds by IP
+});
 
 module.exports = (server, corsOptions) => {
   const io = require('socket.io')(server, {
@@ -121,13 +136,21 @@ module.exports = (server, corsOptions) => {
 
     socket.on('sendMessage', async (message) => {
       console.log('Received sendMessage event with message', message);
-      const req = { body: message, user: { username: message.sender }, io: io };
-      try {
-        const result = await chatController.sendMessage(req);
-        console.log(result);
-      } catch (error) {
-        console.error(error.message);
-      }
+
+      rateLimiter.consume(socket.id) // use socket.id as unique user identifier
+        .then(async () => {
+          const req = { body: message, user: { username: message.sender }, io: io };
+          try {
+            const result = await chatController.sendMessage(req);
+            console.log(result);
+          } catch (error) {
+            console.error(error.message);
+          }
+        })
+        .catch((rejRes) => {
+          console.log(`Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`);
+          // Handle rate limit exceed. You might want to send a message to the user, close the connection, etc.
+        });
     });
 
     socket.on('disconnect', () => {
@@ -216,6 +239,20 @@ exports.getMessages = async (req, res, next) => {
 // roomController.js
 const Room = require('../models/Room');
 
+
+exports.getRoomMembers = async (req, res, next) => {
+  const { roomId } = req.params;
+
+  try {
+    const members = await Room.client.smembers(`room:${roomId}:members`);
+    res.status(200).json({ members });
+  } catch (error) {
+    console.error('Get room members error:', error);
+    next(error);
+  }
+};
+
+
 exports.createRoom = async (req, res, next) => {
   const { name } = req.body;
 
@@ -288,6 +325,8 @@ exports.editRoom = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 ==============================
 
@@ -473,25 +512,43 @@ exports.errorHandler = (err, req, res, next) => {
 ==============================
 
 -rateLimit.js
-const IORedis = require("ioredis");
-const client = new IORedis();
+const socketio = require('socket.io');
+const Redis = require('ioredis');
+const { RateLimiterRedis } = require('rate-limiter-flexible');
 
-exports.rateLimiter = async (username, errorHandler) => {
-  try {
-    const record = await client.get(username);
+const redisClient = new Redis({
+  host: process.env.REDIS_HOST,
+  port: process.env.REDIS_PORT,
+  password: process.env.REDIS_PASSWORD,
+});
 
-    if (record !== null) {
-      errorHandler(new Error("Too many messages, please try again later"));
-      return false; // Return false to indicate the user is rate limited
-    } else {
-      // Set the key to expire in 1 second
-      await client.set(username, "", "EX", 10, "NX");
-      return true; // Return true to indicate the user is not rate limited
-    }
-  } catch (err) {
-    errorHandler(err);
-  }
-};
+const rateLimiter = new RateLimiterRedis({
+  storeClient: redisClient,
+  keyPrefix: 'middleware',
+  points: 3, // 10 requests
+  duration: 60, // per 60 seconds by IP
+});
+
+const io = socketio(server, corsOptions);
+
+io.on('connection', (socket) => {
+  console.log('New client connected');
+
+  socket.on('chat message', (msg) => {
+    rateLimiter.consume(socket.id) // use socket.id as unique user identifier
+      .then(() => {
+        io.emit('chat message', msg);
+      })
+      .catch((rejRes) => {
+        console.log(`Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`);
+        // Handle rate limit exceed. You might want to send a message to the user, close the connection, etc.
+      });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
+});
 
 
 ==============================
@@ -724,6 +781,9 @@ router.post('/leave/:roomId', authenticate, roomController.leaveRoom);
 router.get('/', authenticate, roomController.getRooms);
 router.delete('/:roomId', authenticate, roomController.deleteRoom);
 router.put('/:roomId', authenticate, roomController.editRoom);
+router.get('/:roomId/members', authenticate, roomController.getRoomMembers);
+
+
 
 
 module.exports = router;
@@ -756,6 +816,7 @@ const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const roomRoutes = require("./routes/roomRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
+//const rateLimiter = require("./middleware/rateLimit");
 const User = require("./models/User");
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -781,6 +842,8 @@ const io = require("./config/socket")(server, corsOptions);
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
+
+//app.use('/api/chat/messages', rateLimiter)
 
 // Add Socket.IO instance to the request object
 app.use((req, res, next) => {
@@ -884,9 +947,9 @@ const MainApp = () => {
             <Route
               path="/rooms"
               element={
-                <><CreateRoom />
+                <>
                   <RoomList />
-                  
+                  <CreateRoom />
                 </>
               }
             />
@@ -917,28 +980,24 @@ test('renders learn react link', () => {
 ==============================
 
 -ChatRoom.js
-// ChatRoom.js
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 import { useParams } from "react-router-dom";
 
-// Create socket object outside of the ChatRoom component
 let socket;
 
-const ChatRoom = ({ user }) => {  // Receive the user object as a prop
-  console.log("User in ChatRoom:", user);  // Add this line
+const ChatRoom = ({ user }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [members, setMembers] = useState([]);  
   const { roomId } = useParams();
 
   useEffect(() => {
-    // Connect to the socket
     socket = io('http://localhost:5000');
   
     socket.on('connect', () => {
       socket.emit('joinRoom', roomId);
-      console.log('Socket connected:', socket.connected);
     });
 
     const fetchMessages = async () => {
@@ -948,37 +1007,44 @@ const ChatRoom = ({ user }) => {  // Receive the user object as a prop
             `http://localhost:5000/api/chat/messages/${roomId}`,
             { withCredentials: true }
           );
-          console.log("Fetched messages:", res.data.messages); // Add this line
           setMessages(res.data.messages);
         } catch (err) {
           console.error(err);
         }
-      } else {
-        console.error("roomId is undefined");
       }
     };
-    
+
+    // New function to fetch room members
+    const fetchRoomMembers = async () => {
+      if (roomId) {
+        try {
+          const res = await axios.get(
+            `http://localhost:5000/api/rooms/${roomId}/members`,
+            { withCredentials: true }
+          );
+          setMembers(res.data.members);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
 
     fetchMessages();
-
-    socket.on('connect', () => {
-      console.log('Socket connected:', socket.connected);  // Added log
-    });
+    fetchRoomMembers();
 
     socket.on('receiveMessage', (message) => {
-      console.log("Received message:", message);  // Added log
       setMessages((prevMessages) => [...prevMessages, message]);
     });
 
     return () => {
       socket.off("receiveMessage");
     };
-  }, [roomId]); // Removed socket from dependency array
+  }, [roomId]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      const message = { text: newMessage, roomId, sender: user.username }; // use user.username here
+      const message = { text: newMessage, roomId, sender: user.username };
       socket.emit('sendMessage', message);
       setNewMessage("");
     } catch (err) {
@@ -989,6 +1055,12 @@ const ChatRoom = ({ user }) => {  // Receive the user object as a prop
   return (
     <div>
       <h2>Room: {roomId}</h2>
+      <h3>Members:</h3>  
+      <ul>
+        {members.map((member, index) => (  // Add this block
+          <li key={index}>{member}</li>
+        ))}
+      </ul>
       {messages.map((message, index) => (
         <div key={index}>
           <p>{message.text}</p>

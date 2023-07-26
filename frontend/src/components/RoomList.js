@@ -79,6 +79,17 @@ const RoomList = () => {
         <div key={room.id}>
           <h3>
             <Link to={`/rooms/${room.id}`}>{room.name}</Link>
+            {room.members.map(
+              (member, index) =>
+                member !== user.username && (
+                  <Link
+                    key={index}
+                    to={`/private/${[user.username, member].sort().join("-")}`}
+                  >
+                    Private Chat with {member}
+                  </Link>
+                )
+            )}
           </h3>
           <button onClick={() => joinRoom(room.id)}>Join Room</button>
           <button onClick={() => leaveRoom(room.id)}>Leave Room</button>

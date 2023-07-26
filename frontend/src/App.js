@@ -1,9 +1,10 @@
 // App.js
+import React, { useContext } from "react";
 import { useLocation } from "react-router-dom";
 import { Routes, Route, Link, Navigate } from "react-router-dom";
 import Home from "./components/Home";
 
-import UseAuth from "./hooks/UseAuth";
+import { AuthContext } from "./contexts/AuthContext";
 import LoginForm from "./components/LoginForm";
 import RegisterForm from "./components/RegisterForm";
 import ChatRoom from "./components/ChatRoom";
@@ -11,10 +12,10 @@ import RoomList from "./components/RoomList";
 import CreateRoom from "./components/CreateRoom";
 import ProtectedChatRoom from "./components/ProtectedChatRoom";
 import LogoutButton from "./components/LogoutButton";
+import PrivateChat from "./components/PrivateChat";
 
 const MainApp = () => {
-  const auth = UseAuth();
-  const user = auth ? auth.user : null; // Set user to null if auth is undefined
+  const { user } = useContext(AuthContext);
   const location = useLocation();
 
   return (
@@ -55,12 +56,14 @@ const MainApp = () => {
         {user && (
           <>
             <Route path="/rooms/:roomId" element={<ProtectedChatRoom />} />
+            <Route path="/private/:chatId" element={<PrivateChat user={user} />} />
+
             <Route
               path="/rooms"
               element={
                 <>
-                  <RoomList />
-                  <CreateRoom />
+                  <RoomList user={user} />
+                  <CreateRoom user={user} />
                 </>
               }
             />

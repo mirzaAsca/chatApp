@@ -88,7 +88,7 @@ const ChatRoom = ({ user }) => {
       <ul>
         {members.map((member, index) => (
           <li key={index}>
-            {member} {onlineUsers[member] ? <span style={{color: "green"}}>●</span> : <span style={{color: "red"}}>●</span>}
+            {member} {onlineUsers[member] ? <span style={{color: "green"}}>◉</span> : <span style={{color: "red"}}>◉</span>}
           </li>
         ))}
       </ul>

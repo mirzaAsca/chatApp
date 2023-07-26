@@ -1,13 +1,14 @@
+// LogoutButton.js
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import UseAuth from '../hooks/UseAuth';
-import io from 'socket.io-client';  // Add this
+import io from 'socket.io-client';  // Import socket.io-client
 
 function LogoutButton() {
   const navigate = useNavigate();
   const { setUser } = UseAuth();
-  const socket = io('http://localhost:5000');  // Add this
+  const socket = io('http://localhost:5000');  // Create a socket instance
 
   const logout = async () => {
     try {
@@ -19,8 +20,8 @@ function LogoutButton() {
       });
   
       setUser(null);
-      
-      // Emit logout event  // Add this
+
+      // Emit logout event
       socket.emit('logout', response.data.username);  // Replace 'response.data.username' with the correct username
   
       navigate('/login');

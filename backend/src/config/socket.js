@@ -16,7 +16,8 @@ const rateLimiter = new RateLimiterRedis({
   duration: 60, // per 60 seconds by IP
 });
 
-const onlineUsers = {}; // added this line to keep track of online users
+// Maintain a mapping of user IDs to their socket IDs
+const userSocketIds = {};
 
 module.exports = (server, corsOptions) => {
   const io = socketIo(server, {
@@ -26,30 +27,23 @@ module.exports = (server, corsOptions) => {
   io.on("connection", (socket) => {
     console.log("New client connected:", socket.id);
 
-    socket.on("joinRoom", (roomId, username) => {
-      // added username parameter
-      socket.join(roomId);
-      console.log(`Socket ${socket.id} joined room ${roomId}`);
-      onlineUsers[socket.id] = username; // keep track of the connected user
-      io.emit("userOnline", username); // emit userOnline event
+    socket.on("login", (userId) => {
+      console.log(`User logged in with ID: ${userId}, Socket ID: ${socket.id}`);
+      userSocketIds[userId] = socket.id;
+      socket.join(userId);
+    });
+
+    socket.on("logout", (userId) => {
+      console.log(`User logged out with ID: ${userId}`);
+      delete userSocketIds[userId];
+      socket.leave(userId);
     });
 
     socket.on("sendMessage", async (message) => {
       console.log("Received sendMessage event with message", message);
 
-      socket.on("logout", (username) => {
-        // Find the socket ID of the user who logged out
-        const socketId = Object.keys(onlineUsers).find(
-          (id) => onlineUsers[id] === username
-        );
-        if (socketId) {
-          delete onlineUsers[socketId];
-          io.emit("userOffline", username);
-        }
-      });
-
       rateLimiter
-        .consume(socket.id) // use socket.id as unique user identifier
+        .consume(socket.id)
         .then(async () => {
           const req = {
             body: message,
@@ -67,15 +61,43 @@ module.exports = (server, corsOptions) => {
           console.log(
             `Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`
           );
-          // Handle rate limit exceed. You might want to send a message to the user, close the connection, etc.
+        });
+    });
+
+    socket.on("sendPrivateMessage", async (message) => {
+      console.log("Received sendPrivateMessage event with message", message);
+
+      rateLimiter
+        .consume(socket.id)
+        .then(async () => {
+          const req = {
+            body: message,
+            user: { id: message.senderId },
+            io: io,
+            userSocketIds: userSocketIds, // Add this line
+          };
+          try {
+            const result = await chatController.sendDirectMessage(req);
+            console.log(result);
+
+            // Emit the message to the receiver's room
+            io.to(userSocketIds[message.receiverId]).emit(
+              "privateMessage",
+              result
+            );
+          } catch (error) {
+            console.error(error.message);
+          }
+        })
+        .catch((rejRes) => {
+          console.log(
+            `Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`
+          );
         });
     });
 
     socket.on("disconnect", () => {
       console.log("Client disconnected:", socket.id);
-      let username = onlineUsers[socket.id]; // get the username of the disconnected user
-      delete onlineUsers[socket.id]; // remove the disconnected user from onlineUsers
-      io.emit("userOffline", username); // emit userOffline event
     });
   });
 

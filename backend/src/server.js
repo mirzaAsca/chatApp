@@ -26,6 +26,12 @@ const corsOptions = {
 // Create Express app
 const app = express();
 
+// Add logging middleware
+app.use((req, res, next) => {
+  console.log(`Request received: ${req.method} ${req.path}`);
+  next();
+});
+
 // Add Socket.IO instance to the request object
 const server = http.createServer(app);
 const io = require("./config/socket")(server, corsOptions);

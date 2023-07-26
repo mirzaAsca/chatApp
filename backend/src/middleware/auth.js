@@ -31,16 +31,19 @@ exports.authenticate = async (req, res, next) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 
-try {
+  try {
     console.log('Before jwt.verify');  // Add this line
     const user = jwt.verify(token, process.env.JWT_SECRET);
+    console.log(`Decoded user from JWT: ${JSON.stringify(user)}`);  // Add this line
     console.log('After jwt.verify');  // Add this line
+    console.log('User:', user);  // Log the user object
     req.user = user;
     next();
 } catch (error) {
     console.log('jwt.verify error:', error.message);
     return res.status(401).json({ error: 'Invalid token' });
 }
+
 
 
 };

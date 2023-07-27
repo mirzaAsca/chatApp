@@ -25,8 +25,16 @@ exports.sendMessage = async (req) => {
     );
     await Message.lpush(`room:${roomId}:messages`, messageId);
 
-    const message = { id: messageId, sender: username, text, timestamp };
-    req.io.to(roomId).emit("receiveMessage", message);
+    const message = {
+      id: messageId, 
+      sender: username, 
+      roomId,  // roomId is used instead of chatId
+      text, 
+      timestamp
+    };
+
+    console.log(`Emitting 'receiveMessage' event with message: ${JSON.stringify(message)}`);
+    req.io.emit("receiveMessage", message); // Replace io.to(chatId).emit with io.emit
 
     return { status: 200, message: "Message sent successfully" };
   } catch (error) {
@@ -34,6 +42,8 @@ exports.sendMessage = async (req) => {
     throw new Error("An error occurred while sending the message");
   }
 };
+
+
 
 exports.getMessages = async (req, res, next) => {
   console.log("getMessages controller called");
@@ -104,13 +114,13 @@ exports.sendDirectMessage = async (req) => {
 
     const message = {
       id: messageId,
-      sender: sender,  // Change senderUsername to sender
+      sender: sender,
       chatId,
       text,
       timestamp
     };
     console.log(`Emitting 'privateMessage' event with message: ${JSON.stringify(message)}`);
-    req.io.to(chatId).emit("privateMessage", message);
+    req.io.emit("privateMessage", message); // Replace io.to(chatId).emit with io.emit
 
     return { status: 200, message: "Message sent successfully" };
   } catch (error) {

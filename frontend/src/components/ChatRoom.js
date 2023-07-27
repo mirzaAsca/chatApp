@@ -26,7 +26,17 @@ const ChatRoom = ({ user }) => {
             `http://localhost:5000/api/chat/messages/${roomId}`,
             { withCredentials: true }
           );
-          setMessages(res.data.messages);
+          setMessages(
+            res.data.messages
+              .map((message) => {
+                return {
+                  ...message,
+                  isUserSender: message.sender === user.username,
+                };
+              })
+              .reverse() // Add this line
+          );
+          
         } catch (err) {
           console.error(err);
         }
@@ -50,9 +60,16 @@ const ChatRoom = ({ user }) => {
     fetchMessages();
     fetchRoomMembers();
 
-    socket.on('receiveMessage', (message) => {
-      setMessages((prevMessages) => [...prevMessages, message]);
+    socket.on("receiveMessage", (message) => {
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          ...message,
+          isUserSender: message.sender === user.username,
+        },
+      ]);
     });
+    
 
     // New code for handling userOnline and userOffline events
     socket.on('userOnline', (username) => {
@@ -72,14 +89,26 @@ const ChatRoom = ({ user }) => {
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      const message = { text: newMessage, roomId, sender: user.username };
-      socket.emit('sendMessage', message);
-      setMessages((prevMessages) => [...prevMessages, message]);
+      const message = {
+        text: newMessage,
+        roomId: roomId,  // roomId is used instead of chatId
+        sender: user.username,
+        timestamp: Date.now(),
+        isUserSender: true
+      };
+          
+      console.log(`emit sendMessage with message: ${JSON.stringify(message)}`);
+      socket.emit("sendMessage", message);
+          
+      console.log(`Sent message to server: ${JSON.stringify(message)}`);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
+  
+  
+  
   
   
   return (

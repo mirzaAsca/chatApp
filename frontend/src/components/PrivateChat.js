@@ -10,7 +10,7 @@ const PrivateChat = ({ user }) => {
   const [newMessage, setNewMessage] = useState("");
   const { chatId: encodedChatId } = useParams();
   const chatId = decodeURIComponent(encodedChatId); // Decode the chatId from URL parameters
-  console.log('Decoded chatId:', chatId); // Add this line
+  console.log("Decoded chatId:", chatId); // Add this line
 
   useEffect(() => {
     socket = io("http://localhost:5000");
@@ -29,25 +29,28 @@ const PrivateChat = ({ user }) => {
         const messageChatId = [user.username, receiverUsername]
           .sort()
           .join("-");
-        
-        console.log('Computed messageChatId:', messageChatId); // Add this line
+
+        console.log("Computed messageChatId:", messageChatId); // Add this line
         console.log(`user.username: ${user.username}`);
         console.log(`receiverUsername: ${receiverUsername}`);
         console.log(`messageChatId: ${messageChatId}`);
 
+        // Fetch messages
         const res = await axios.get(
           `http://localhost:5000/api/chat/privateMessages/${messageChatId}`,
           { withCredentials: true }
         );
 
-        // Adding the isUserSender property to each message
+        // Adding the isUserSender property to each message and reverse the order
         setMessages(
-          res.data.messages.map((message) => {
-            return {
-              ...message,
-              isUserSender: message.sender === user.username,
-            };
-          })
+          res.data.messages
+            .map((message) => {
+              return {
+                ...message,
+                isUserSender: message.sender === user.username,
+              };
+            })
+            .reverse() // Add this line
         );
       } catch (err) {
         console.error(err);
@@ -56,16 +59,23 @@ const PrivateChat = ({ user }) => {
 
     fetchMessages();
 
-    socket.on("privateMessage", (message) => {
-      console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
-      setMessages((prevMessages) => [
-        ...prevMessages,
+// Inside useEffect
+socket.on("privateMessage", (message) => {
+  console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
+  if (message.chatId === chatId) { // Add this condition
+    setMessages((prevMessages) => {
+      return [
+        ...prevMessages, // Existing messages at the top
         {
           ...message,
           isUserSender: message.sender === user.username,
-        },
-      ]);
+        }, // New message at the bottom
+      ];
     });
+  }
+});
+
+
 
     return () => {
       socket.off("privateMessage");
@@ -93,7 +103,6 @@ const PrivateChat = ({ user }) => {
       socket.emit("sendPrivateMessage", message);
         
       console.log(`Sent message to server: ${JSON.stringify(message)}`);
-      setMessages((prevMessages) => [...prevMessages, message]);
       setNewMessage("");
     } catch (err) {
       console.error(err);

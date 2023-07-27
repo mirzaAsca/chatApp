@@ -7,7 +7,6 @@ const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const roomRoutes = require("./routes/roomRoutes");
 const { errorHandler } = require("./middleware/errorHandler");
-//const rateLimiter = require("./middleware/rateLimit");
 const User = require("./models/User");
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -40,7 +39,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-//app.use('/api/chat/messages', rateLimiter)
+
 
 // Add Socket.IO instance to the request object
 app.use((req, res, next) => {

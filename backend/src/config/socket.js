@@ -24,19 +24,42 @@ module.exports = (server, corsOptions) => {
     cors: corsOptions,
   });
 
-  io.on("connection", (socket) => {
-    console.log("New client connected:", socket.id);
-
-    socket.on("login", (userId) => {
+  io.on('connection', (socket) => {
+    console.log('New client connected:', socket.id);
+    
+    socket.on('login', (userId) => {
       console.log(`User logged in with ID: ${userId}, Socket ID: ${socket.id}`);
       userSocketIds[userId] = socket.id;
       socket.join(userId);
+  
+      // Set user status to online
+      // Replace 'userId' with your actual user identifier
+      socket.broadcast.emit('userOnline', userId);
     });
-
-    socket.on("logout", (userId) => {
+  
+    socket.on('logout', (userId) => {
       console.log(`User logged out with ID: ${userId}`);
       delete userSocketIds[userId];
       socket.leave(userId);
+  
+      // Set user status to offline
+      // Replace 'userId' with your actual user identifier
+      socket.broadcast.emit('userOffline', userId);
+    });
+  
+    socket.on('disconnect', () => {
+      console.log('Client disconnected:', socket.id);
+      
+      // Find the user that got disconnected
+      const disconnectedUser = Object.keys(userSocketIds).find(key => userSocketIds[key] === socket.id);
+  
+      if (disconnectedUser) {
+        delete userSocketIds[disconnectedUser];
+  
+        // Set user status to offline
+        // Replace 'disconnectedUser' with your actual user identifier
+        socket.broadcast.emit('userOffline', disconnectedUser);
+      }
     });
 
     socket.on("sendMessage", async (message) => {

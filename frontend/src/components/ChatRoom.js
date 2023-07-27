@@ -94,11 +94,12 @@ const ChatRoom = ({ user }) => {
         ))}
       </ul>
       {messages.map((message, index) => (
-        <div key={index}>
-          <p>{message.text}</p>
-          <p>By: {message.sender}</p>
-        </div>
-      ))}
+  <div key={index}>
+    <p>{message.text}</p>
+    <p>By: {message.sender === user.username ? "You" : message.sender}</p>
+  </div>
+))}
+
       <form onSubmit={sendMessage}>
         <input
           value={newMessage}

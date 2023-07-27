@@ -10,8 +10,7 @@ const PrivateChat = ({ user }) => {
   const [newMessage, setNewMessage] = useState("");
   const { chatId: encodedChatId } = useParams();
   const chatId = decodeURIComponent(encodedChatId); // Decode the chatId from URL parameters
-  console.log("chatId from useParams:", chatId);
-  console.log("User object:", user);
+  console.log('Decoded chatId:', chatId); // Add this line
 
   useEffect(() => {
     socket = io("http://localhost:5000");
@@ -30,7 +29,8 @@ const PrivateChat = ({ user }) => {
         const messageChatId = [user.username, receiverUsername]
           .sort()
           .join("-");
-
+        
+        console.log('Computed messageChatId:', messageChatId); // Add this line
         console.log(`user.username: ${user.username}`);
         console.log(`receiverUsername: ${receiverUsername}`);
         console.log(`messageChatId: ${messageChatId}`);
@@ -77,25 +77,21 @@ const PrivateChat = ({ user }) => {
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      const receiverUsername = chatId
-        .split("-")
-        .find((username) => username !== user.username);
-      const messageChatId = [user.username, receiverUsername].sort().join("-");
-      console.log(`Constructed chatId: ${messageChatId}`);
-
+      const receiverUsername = chatId.split('-').find(username => username !== user.username);
+      const messageChatId = [user.username, receiverUsername].sort().join('-');
+    
       const message = {
         text: newMessage,
         chatId: messageChatId,
-        senderId: user.id,
         sender: user.username,
+        receiver: receiverUsername,
         timestamp: Date.now(),
-        isUserSender: true,
+        isUserSender: true
       };
-      console.log(
-        `emit sendPrivateMessage with message: ${JSON.stringify(message)}`
-      );
-
+        
+      console.log(`emit sendPrivateMessage with message: ${JSON.stringify(message)}`);
       socket.emit("sendPrivateMessage", message);
+        
       console.log(`Sent message to server: ${JSON.stringify(message)}`);
       setMessages((prevMessages) => [...prevMessages, message]);
       setNewMessage("");
@@ -103,6 +99,7 @@ const PrivateChat = ({ user }) => {
       console.error(err);
     }
   };
+  
 
   return (
     <div>

@@ -73,10 +73,16 @@ exports.getMessages = async (req, res, next) => {
 };
 
 exports.sendDirectMessage = async (req) => {
-  const { text, receiverUsername } = req.body;
-  const { username: senderUsername } = req.user; 
+  console.log(`req.user: ${JSON.stringify(req.user)}`);
 
-  console.log(`senderUsername: ${senderUsername}`);
+  const { text, sender, receiver } = req.body;
+
+  console.log(`sender: ${sender}`);
+  console.log(`receiver: ${receiver}`);
+
+  // Compute the chatId
+  const chatId = [sender, receiver].sort().join('-');
+  
   console.log(`chatId: ${chatId}`);
 
   try {
@@ -86,7 +92,7 @@ exports.sendDirectMessage = async (req) => {
     await Message.hset(
       `directMessage:${messageId}`,
       "sender",
-      senderUsername,
+      sender,  // Change senderUsername to sender
       "chatId",
       chatId,
       "text",
@@ -98,12 +104,12 @@ exports.sendDirectMessage = async (req) => {
 
     const message = {
       id: messageId,
-      sender: senderUsername,
+      sender: sender,  // Change senderUsername to sender
       chatId,
       text,
       timestamp
     };
-
+    console.log(`Emitting 'privateMessage' event with message: ${JSON.stringify(message)}`);
     req.io.to(chatId).emit("privateMessage", message);
 
     return { status: 200, message: "Message sent successfully" };
@@ -113,9 +119,12 @@ exports.sendDirectMessage = async (req) => {
   }
 };
 
+
 exports.getPrivateMessages = async (req, res, next) => {
   const chatId = req.params.chatId;
   const { username: senderUsername } = req.user;
+  console.log('Received chatId:', chatId); // Add this line
+
 
   try {
     const messageIds = await Message.lrange(`direct:${chatId}:messages`, 0, -1);

@@ -69,17 +69,18 @@ const ChatRoom = ({ user }) => {
       socket.off("userOffline");
     };
   }, [roomId, user.username]);
-
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
       const message = { text: newMessage, roomId, sender: user.username };
       socket.emit('sendMessage', message);
+      setMessages((prevMessages) => [...prevMessages, message]);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
+  
   
   return (
     <div>

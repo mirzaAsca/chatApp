@@ -12,7 +12,8 @@ exports.authenticate = async (req, res, next) => {
   console.log('authenticate middleware called');  // Log that the middleware has been called
 
   const token = req.cookies.token;
-
+  console.log('Incoming token:', token); // Add this line
+  
   if (!token) {
     console.log('No token provided');  // Log that no token was provided
     return res.status(401).json({ error: 'No token provided' });

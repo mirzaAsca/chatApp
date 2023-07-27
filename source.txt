@@ -289,8 +289,10 @@ exports.getMessages = async (req, res, next) => {
 };
 
 exports.sendDirectMessage = async (req) => {
-  const { text, chatId } = req.body;
-  const { username: senderUsername } = req.user;
+  console.log(`req.user: ${JSON.stringify(req.user)}`);  // Add this line
+
+  const { text, receiverUsername } = req.body;
+  const { username: senderUsername } = req.user; 
 
   console.log(`senderUsername: ${senderUsername}`);
   console.log(`chatId: ${chatId}`);
@@ -319,7 +321,7 @@ exports.sendDirectMessage = async (req) => {
       text,
       timestamp
     };
-
+    console.log(`Emitting 'privateMessage' event with message: ${JSON.stringify(message)}`);
     req.io.to(chatId).emit("privateMessage", message);
 
     return { status: 200, message: "Message sent successfully" };
@@ -623,7 +625,8 @@ exports.authenticate = async (req, res, next) => {
   console.log('authenticate middleware called');  // Log that the middleware has been called
 
   const token = req.cookies.token;
-
+  console.log('Incoming token:', token); // Add this line
+  
   if (!token) {
     console.log('No token provided');  // Log that no token was provided
     return res.status(401).json({ error: 'No token provided' });
@@ -645,6 +648,7 @@ exports.authenticate = async (req, res, next) => {
   try {
     console.log('Before jwt.verify');  // Add this line
     const user = jwt.verify(token, process.env.JWT_SECRET);
+    console.log(`Decoded user from JWT: ${JSON.stringify(user)}`);  // Add this line
     console.log('After jwt.verify');  // Add this line
     console.log('User:', user);  // Log the user object
     req.user = user;
@@ -1011,7 +1015,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-//app.use('/api/chat/messages', rateLimiter)
+app.use('/api/chat/messages', rateLimiter)
 
 // Add Socket.IO instance to the request object
 app.use((req, res, next) => {
@@ -1512,7 +1516,8 @@ const PrivateChat = ({ user }) => {
   const [newMessage, setNewMessage] = useState("");
   const { chatId: encodedChatId } = useParams();
   const chatId = decodeURIComponent(encodedChatId); // Decode the chatId from URL parameters
-  console.log("chatId from useParams:", chatId);
+  //console.log("chatId from useParams:", chatId);
+  //console.log("User object:", user);
 
   useEffect(() => {
     socket = io("http://localhost:5000");
@@ -1541,7 +1546,15 @@ const PrivateChat = ({ user }) => {
           { withCredentials: true }
         );
 
-        setMessages(res.data.messages);
+        // Adding the isUserSender property to each message
+        setMessages(
+          res.data.messages.map((message) => {
+            return {
+              ...message,
+              isUserSender: message.sender === user.username,
+            };
+          })
+        );
       } catch (err) {
         console.error(err);
       }
@@ -1551,7 +1564,13 @@ const PrivateChat = ({ user }) => {
 
     socket.on("privateMessage", (message) => {
       console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
-      setMessages((prevMessages) => [...prevMessages, message]);
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          ...message,
+          isUserSender: message.sender === user.username,
+        },
+      ]);
     });
 
     return () => {
@@ -1564,26 +1583,25 @@ const PrivateChat = ({ user }) => {
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      const receiverUsername = chatId
-        .split("-")
-        .find((username) => username !== user.username);
-      const messageChatId = [user.username, receiverUsername].sort().join("-");
-      console.log(`Constructed chatId: ${messageChatId}`);
-
+      const receiverUsername = chatId.split('-').find(username => username !== user.username);
+      const messageChatId = [user.username, receiverUsername].sort().join('-');
+  
       const message = {
         text: newMessage,
-        chatId: chatId, // Use the chatId from useParams()
+        chatId: messageChatId,
         senderId: user.id,
         sender: user.username,
         timestamp: Date.now(),
-        isUserSender: true,
+        isUserSender: true
       };
-
-      console.log(
-        `emit sendPrivateMessage with message: ${JSON.stringify(message)}`
-      );
-
+      
+      console.log(`emit sendPrivateMessage with message: ${JSON.stringify(message)}`);
+      
+      // Add the log here
+      console.log(`JWT token: ${localStorage.getItem('token')}`);  // Replace this with how you're accessing the token
+      
       socket.emit("sendPrivateMessage", message);
+      
       console.log(`Sent message to server: ${JSON.stringify(message)}`);
       setMessages((prevMessages) => [...prevMessages, message]);
       setNewMessage("");
@@ -1599,12 +1617,17 @@ const PrivateChat = ({ user }) => {
         {chatId.split("-").find((username) => username !== user.username)}
       </h2>
 
-      {messages.map((message, index) => (
-        <div key={index}>
-          <p>{message.text}</p>
-          <p>By: {message.sender === user.username ? "You" : message.sender}</p>
-        </div>
-      ))}
+      {messages.map((message, index) => {
+        console.log("Message object:", message); // Log the message object
+        return (
+          <div key={index}>
+            <p>{message.text}</p>
+            <p>
+              By: {message.sender === user.username ? "You" : message.sender}
+            </p>
+          </div>
+        );
+      })}
 
       <form onSubmit={sendMessage}>
         <input

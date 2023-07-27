@@ -1,12 +1,13 @@
 // RoomList.js
-import React, { useState, useEffect } from "react";
+import React, { useContext, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import UseAuth from "../hooks/UseAuth";
 import { Link } from "react-router-dom";
+import { RoomsContext } from '../contexts/RoomsContext';
 
 const RoomList = () => {
-  const [rooms, setRooms] = useState([]);
+  const { rooms, setRooms } = useContext(RoomsContext);
 
   const navigate = useNavigate();
   const { user } = UseAuth();
@@ -22,11 +23,12 @@ const RoomList = () => {
           });
           console.log(res.data.rooms); // Add this line
           setRooms(res.data.rooms);
+          console.log('Rooms in RoomList after setting:', rooms); // Add this line
         } catch (err) {
           console.error(err);
         }
       };
-
+  
       fetchRooms();
     }
   }, [user, navigate]);

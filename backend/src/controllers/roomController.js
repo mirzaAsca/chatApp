@@ -14,18 +14,22 @@ exports.getRoomMembers = async (req, res, next) => {
   }
 };
 
-
 exports.createRoom = async (req, res, next) => {
   const { name } = req.body;
 
   try {
     const roomId = await Room.createRoom(name);
-    res.status(201).json({ message: 'Room created successfully', roomId });
+    // Include a room object in the response
+    res.status(201).json({ 
+      message: 'Room created successfully', 
+      room: { id: roomId, name: name }
+    });
   } catch (error) {
     console.error('Create room error:', error);
     next(error);
   }
 };
+
 
 exports.joinRoom = async (req, res, next) => {
   const { roomId } = req.params;

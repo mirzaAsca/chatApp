@@ -1,20 +1,12 @@
 // CreateRoom.js
-import React, { useState, useEffect } from 'react';
+
+import React, { useContext, useState } from 'react';
 import axios from 'axios';
-import UseAuth from '../hooks/UseAuth'; 
-import { useNavigate } from 'react-router-dom';
+import { RoomsContext } from '../contexts/RoomsContext'; 
 
 const CreateRoom = () => {
   const [roomName, setRoomName] = useState('');
-  const { user } = UseAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    // Redirect to login if user is not logged in
-    if (!user) {
-      navigate('/login');
-    }
-  }, [user, navigate]);
+  const { setRooms } = useContext(RoomsContext);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -25,6 +17,11 @@ const CreateRoom = () => {
         { withCredentials: true }
       );
       console.log(response.data);
+
+      // Fetch rooms again after creating a new room
+      const roomsResponse = await axios.get('http://localhost:5000/api/rooms', { withCredentials: true });
+      setRooms(roomsResponse.data.rooms);
+
       setRoomName('');
     } catch (error) {
       console.error('Failed to create room:', error);

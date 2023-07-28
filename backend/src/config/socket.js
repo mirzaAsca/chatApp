@@ -36,17 +36,12 @@ module.exports = (server, corsOptions) => {
       // Replace 'userId' with your actual user identifier
       socket.broadcast.emit('userOnline', userId);
     });
-  
-    socket.on('logout', (userId) => {
-      console.log(`User logged out with ID: ${userId}`);
-      delete userSocketIds[userId];
-      socket.leave(userId);
-  
-      // Set user status to offline
-      // Replace 'userId' with your actual user identifier
-      socket.broadcast.emit('userOffline', userId);
+
+    // Listen for userLogout event
+    socket.on('userLogout', (username) => {
+      console.log(`User logged out with username: ${username}`);
+      socket.broadcast.emit('userOffline', username);
     });
-  
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
       

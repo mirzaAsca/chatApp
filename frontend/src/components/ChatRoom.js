@@ -86,27 +86,27 @@ const ChatRoom = ({ user }) => {
       socket.off("userOffline");
     };
   }, [roomId, user.username]);
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    try {
-      const message = {
-        text: newMessage,
-        roomId: roomId,  // roomId is used instead of chatId
-        sender: user.username,
-        timestamp: Date.now(),
-        isUserSender: true
-      };
-          
-      console.log(`emit sendMessage with message: ${JSON.stringify(message)}`);
-      socket.emit("sendMessage", message);
-          
-      console.log(`Sent message to server: ${JSON.stringify(message)}`);
-      setNewMessage("");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  
+const sendMessage = async (e) => {
+  e.preventDefault();
+  try {
+    const message = {
+      text: newMessage,
+      roomId: roomId,  // roomId is used instead of chatId
+      sender: user.username,
+      timestamp: Date.now(),
+      isUserSender: true
+    };
+        
+    console.log(`emit sendMessage with message: ${JSON.stringify(message)}`);
+    socket.emit("sendMessage", message);
+        
+    console.log(`Sent message to server: ${JSON.stringify(message)}`);
+    setNewMessage("");
+  } catch (err) {
+    console.error(err);
+  }
+};
+
   
   
   

@@ -88,3 +88,4 @@ module.exports = function(server) {
 
   return io;
 };
+module.exports = io;

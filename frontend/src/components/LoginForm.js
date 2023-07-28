@@ -3,14 +3,12 @@ import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
-import io from 'socket.io-client'; // Import socket.io-client
 
 const LoginForm = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const { setUser } = useContext(AuthContext); // Ensure AuthContext provides setUser
+  const { login } = useContext(AuthContext);
   const navigate = useNavigate();
-  const socket = io('http://localhost:5000'); // Create a socket instance
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,11 +20,7 @@ const LoginForm = () => {
         { withCredentials: true }
       );
 
-      setUser({ username: response.data.username }); // Ensure response.data contains username
-
-      // Emit login event
-      socket.emit('login', response.data.username);
-
+      login(response.data.username);
       navigate('/rooms');
     } catch (error) {
       console.error(error);

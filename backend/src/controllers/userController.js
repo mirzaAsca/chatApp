@@ -69,6 +69,10 @@ exports.logout = async (req, res, next) => {
     return res.status(401).json({ error: "No token provided" });
   }
 
+  if (!req.user || !req.user.username) {
+    return res.status(400).json({ error: "Invalid user" });
+  }
+
   try {
     await redis.sadd("invalidatedTokens", token);
 
@@ -76,6 +80,7 @@ exports.logout = async (req, res, next) => {
     res.clearCookie("token");
 
     // Emit logout event
+    const io = require('../io'); // Import io from your io.js file
     io.emit('logout', req.user.username); // assuming req.user.username is available
 
     res.status(200).json({ message: "User logged out successfully" });
@@ -84,4 +89,3 @@ exports.logout = async (req, res, next) => {
     next(error);
   }
 };
-

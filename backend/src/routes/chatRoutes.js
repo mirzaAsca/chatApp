@@ -16,5 +16,12 @@ router.post("/sendDirect", authenticate, apiLimiter, chatController.sendDirectMe
 router.get("/messages/:roomId", authenticate, chatController.getMessages);
 router.get("/privateMessages/:chatId", authenticate, chatController.getPrivateMessages); // Modified route
 router.get('/conversation/:receiverId', authenticate, chatController.getConversation);
+router.get('/lastReadMessage/:userId/:chatId', async (req, res, next) => {
+  const { userId, chatId } = req.params;
+  const readMessagesKey = `readMessages:${userId}:${chatId}`;
+  const lastReadMessageId = await client.get(readMessagesKey);
+  res.json(lastReadMessageId || null);
+});
+
 
 module.exports = router;

@@ -81,6 +81,11 @@ module.exports = function(server) {
       io.to(message.roomId).emit('receiveMessage', message);
     });
 
+    socket.on('saveReadMessage', ({ userId, chatId, messageId }) => {
+      const readMessagesKey = `readMessages:${userId}:${chatId}`;
+      client.set(readMessagesKey, messageId);
+    });
+
     socket.on('disconnect', () => {
       console.log('Client disconnected');
     });

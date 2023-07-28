@@ -75,6 +75,7 @@
 │       ├── logo.svg
 │       ├── reportWebVitals.js
 │       └── setupTests.js
+├── source - Copy.txt
 ├── source.txt
 └── structure.py
 
@@ -141,17 +142,12 @@ module.exports = (server, corsOptions) => {
       // Replace 'userId' with your actual user identifier
       socket.broadcast.emit('userOnline', userId);
     });
-  
-    socket.on('logout', (userId) => {
-      console.log(`User logged out with ID: ${userId}`);
-      delete userSocketIds[userId];
-      socket.leave(userId);
-  
-      // Set user status to offline
-      // Replace 'userId' with your actual user identifier
-      socket.broadcast.emit('userOffline', userId);
+
+    // Listen for userLogout event
+    socket.on('userLogout', (username) => {
+      console.log(`User logged out with username: ${username}`);
+      socket.broadcast.emit('userOffline', username);
     });
-  
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
       
@@ -266,7 +262,7 @@ exports.sendMessage = async (req) => {
     const message = {
       id: messageId, 
       sender: username, 
-      roomId,  // roomId is used instead of chatId
+      roomId, 
       text, 
       timestamp
     };
@@ -346,7 +342,9 @@ exports.sendDirectMessage = async (req) => {
       "text",
       text,
       "timestamp",
-      timestamp
+      timestamp,
+      "status",
+      "delivered"
     );
     await Message.lpush(`direct:${chatId}:messages`, messageId);
 
@@ -355,7 +353,8 @@ exports.sendDirectMessage = async (req) => {
       sender: sender,
       chatId,
       text,
-      timestamp
+      timestamp,
+      status: "delivered"
     };
     console.log(`Emitting 'privateMessage' event with message: ${JSON.stringify(message)}`);
     req.io.emit("privateMessage", message); // Replace io.to(chatId).emit with io.emit
@@ -366,6 +365,8 @@ exports.sendDirectMessage = async (req) => {
     throw new Error("An error occurred while sending the message");
   }
 };
+
+
 
 
 exports.getPrivateMessages = async (req, res, next) => {
@@ -396,6 +397,7 @@ exports.getPrivateMessages = async (req, res, next) => {
   }
 };
 
+
 exports.getConversation = async (req, res, next) => {
   const { id: senderId } = req.user;
   const { receiverId } = req.params;
@@ -422,6 +424,38 @@ exports.getConversation = async (req, res, next) => {
     console.error("Get conversation error:", error);
     res.status(500).json({
       error: "An error occurred while getting the conversation",
+      details: error.message,
+    });
+  }
+};
+
+exports.updateMessageStatus = async (req, res, next) => {
+  const { messageId, status } = req.body;
+  const { username: senderUsername } = req.user;
+
+  try {
+    const message = await Message.hgetall(`directMessage:${messageId}`);
+    if (message.sender === senderUsername) {
+      throw new Error("You cannot update the status of a message you sent");
+    }
+
+    await Message.hset(`directMessage:${messageId}`, "status", status);
+    console.log(`Updated status of message ${messageId} to ${status}`);
+
+    const updatedMessage = {
+      id: messageId,
+      sender: message.sender,
+      chatId: message.chatId,
+      text: message.text,
+      timestamp: message.timestamp,
+      status
+    };
+    req.io.emit("updateMessageStatus", updatedMessage);
+    res.status(200).json({ message: "Message status updated successfully" });
+  } catch (error) {
+    console.error("Update message status error:", error);
+    res.status(500).json({
+      error: "An error occurred while updating the message status",
       details: error.message,
     });
   }
@@ -601,6 +635,10 @@ exports.logout = async (req, res, next) => {
     return res.status(401).json({ error: "No token provided" });
   }
 
+  if (!req.user || !req.user.username) {
+    return res.status(400).json({ error: "Invalid user" });
+  }
+
   try {
     await redis.sadd("invalidatedTokens", token);
 
@@ -703,6 +741,10 @@ module.exports = function(server) {
 
     socket.on('sendMessage', (message) => {
       io.to(message.roomId).emit('receiveMessage', message);
+    });
+
+    socket.on('updateMessageStatus', (message) => {
+      io.emit('updateMessageStatus', message);
     });
 
     socket.on('disconnect', () => {
@@ -993,6 +1035,8 @@ router.post("/sendDirect", authenticate, apiLimiter, chatController.sendDirectMe
 router.get("/messages/:roomId", authenticate, chatController.getMessages);
 router.get("/privateMessages/:chatId", authenticate, chatController.getPrivateMessages); // Modified route
 router.get('/conversation/:receiverId', authenticate, chatController.getConversation);
+router.put("/updateMessageStatus", authenticate, chatController.updateMessageStatus);
+
 
 module.exports = router;
 
@@ -1026,11 +1070,11 @@ module.exports = router;
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
+const auth = require('../middleware/auth'); // Don't forget to import the auth middleware
 
 router.post('/register', userController.register);
 router.post('/login', userController.login);
-router.post('/logout', userController.logout);
-
+router.post('/logout', auth.authenticate, userController.logout); // Add auth.authenticate before userController.logout
 
 module.exports = router;
 
@@ -1228,22 +1272,21 @@ test('renders learn react link', () => {
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import io from "socket.io-client";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 
 let socket;
-
 const ChatRoom = ({ user }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const [members, setMembers] = useState([]);  
+  const [members, setMembers] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({}); // added this line to keep track of online users
   const { roomId } = useParams();
 
   useEffect(() => {
-    socket = io('http://localhost:5000');
-  
-    socket.on('connect', () => {
-      socket.emit('joinRoom', roomId, user.username); // added username parameter
+    socket = io("http://localhost:5000");
+
+    socket.on("connect", () => {
+      socket.emit("joinRoom", roomId, user.username); // added username parameter
     });
 
     const fetchMessages = async () => {
@@ -1263,7 +1306,6 @@ const ChatRoom = ({ user }) => {
               })
               .reverse() // Add this line
           );
-          
         } catch (err) {
           console.error(err);
         }
@@ -1296,14 +1338,13 @@ const ChatRoom = ({ user }) => {
         },
       ]);
     });
-    
 
     // New code for handling userOnline and userOffline events
-    socket.on('userOnline', (username) => {
+    socket.on("userOnline", (username) => {
       setOnlineUsers((prevUsers) => ({ ...prevUsers, [username]: true }));
     });
 
-    socket.on('userOffline', (username) => {
+    socket.on("userOffline", (username) => {
       setOnlineUsers((prevUsers) => ({ ...prevUsers, [username]: false }));
     });
 
@@ -1318,43 +1359,55 @@ const ChatRoom = ({ user }) => {
     try {
       const message = {
         text: newMessage,
-        roomId: roomId,  // roomId is used instead of chatId
+        roomId: roomId, // roomId is used instead of chatId
         sender: user.username,
         timestamp: Date.now(),
-        isUserSender: true
+        isUserSender: true,
       };
-          
+
       console.log(`emit sendMessage with message: ${JSON.stringify(message)}`);
       socket.emit("sendMessage", message);
-          
+
       console.log(`Sent message to server: ${JSON.stringify(message)}`);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
-  
-  
-  
-  
-  
+
+  function customEncodeURIComponent(str) {
+    return encodeURIComponent(str).replace(/%40/g, "@");
+  }
+
   return (
     <div>
       <h2>Room: {roomId}</h2>
-      <h3>Members:</h3>  
+      <h3>Members:</h3>
       <ul>
         {members.map((member, index) => (
           <li key={index}>
-            {member} {onlineUsers[member] ? <span style={{color: "green"}}>â—‰</span> : <span style={{color: "red"}}>â—‰</span>}
+            <Link
+              to={`/private/${customEncodeURIComponent(
+                [user.username, member].sort().join("-")
+              )}`}
+            >
+              {member}
+            </Link>
+
+            {onlineUsers[member] ? (
+              <span style={{ color: "green" }}>â—‰</span>
+            ) : (
+              <span style={{ color: "red" }}>â—‰</span>
+            )}
           </li>
         ))}
       </ul>
       {messages.map((message, index) => (
-  <div key={index}>
-    <p>{message.text}</p>
-    <p>By: {message.sender === user.username ? "You" : message.sender}</p>
-  </div>
-))}
+        <div key={index}>
+          <p>{message.text}</p>
+          <p>By: {message.sender === user.username ? "You" : message.sender}</p>
+        </div>
+      ))}
 
       <form onSubmit={sendMessage}>
         <input
@@ -1369,6 +1422,7 @@ const ChatRoom = ({ user }) => {
 };
 
 export default ChatRoom;
+
 
 ==============================
 
@@ -1446,14 +1500,12 @@ import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
-import io from 'socket.io-client'; // Import socket.io-client
 
 const LoginForm = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const { setUser } = useContext(AuthContext); // Ensure AuthContext provides setUser
+  const { login } = useContext(AuthContext);
   const navigate = useNavigate();
-  const socket = io('http://localhost:5000'); // Create a socket instance
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1465,11 +1517,7 @@ const LoginForm = () => {
         { withCredentials: true }
       );
 
-      setUser({ username: response.data.username }); // Ensure response.data contains username
-
-      // Emit login event
-      socket.emit('login', response.data.username);
-
+      login(response.data.username);
       navigate('/rooms');
     } catch (error) {
       console.error(error);
@@ -1509,45 +1557,40 @@ export default LoginForm;
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import UseAuth from '../hooks/UseAuth';
-import io from 'socket.io-client';  // Import socket.io-client
+import { AuthContext } from '../contexts/AuthContext';
 
 function LogoutButton() {
   const navigate = useNavigate();
-  const { setUser } = UseAuth();
-  const socket = io('http://localhost:5000');  // Create a socket instance
+  const { logout, user } = React.useContext(AuthContext);
 
-  const logout = async () => {
+  const handleLogout = async () => {
     try {
-      const response = await axios.post('http://localhost:5000/api/users/logout', {}, {
+      await axios.post('http://localhost:5000/api/users/logout', {}, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         withCredentials: true
       });
   
-      setUser(null);
-
-      // Emit logout event
-      socket.emit('logout', response.data.username);  // Replace 'response.data.username' with the correct username
-  
+      logout();
       navigate('/login');
     } catch (error) {
       console.error('Failed to log out', error);
     }
   };
-
+  
   return (
-    <button onClick={logout}>Logout</button>
+    <button onClick={handleLogout}>Logout</button>
   );
 }
 
 export default LogoutButton;
 
+
 ==============================
 
 -PrivateChat.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 import { useParams } from "react-router-dom";
@@ -1558,17 +1601,17 @@ const PrivateChat = ({ user }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const { chatId: encodedChatId } = useParams();
-  const chatId = decodeURIComponent(encodedChatId); // Decode the chatId from URL parameters
-  console.log("Decoded chatId:", chatId); // Add this line
+  const chatId = decodeURIComponent(encodedChatId);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     socket = io("http://localhost:5000");
-
+  
     socket.on("connect", () => {
       console.log(`Socket connected with ID: ${socket.id}`);
       socket.emit("login", user.id);
     });
-
+  
     const fetchMessages = async () => {
       try {
         console.log(`Fetching messages for chatId: ${chatId}`);
@@ -1578,19 +1621,12 @@ const PrivateChat = ({ user }) => {
         const messageChatId = [user.username, receiverUsername]
           .sort()
           .join("-");
-
-        console.log("Computed messageChatId:", messageChatId); // Add this line
-        console.log(`user.username: ${user.username}`);
-        console.log(`receiverUsername: ${receiverUsername}`);
-        console.log(`messageChatId: ${messageChatId}`);
-
-        // Fetch messages
+  
         const res = await axios.get(
           `http://localhost:5000/api/chat/privateMessages/${messageChatId}`,
           { withCredentials: true }
         );
-
-        // Adding the isUserSender property to each message and reverse the order
+  
         setMessages(
           res.data.messages
             .map((message) => {
@@ -1599,65 +1635,119 @@ const PrivateChat = ({ user }) => {
                 isUserSender: message.sender === user.username,
               };
             })
-            .reverse() // Add this line
+            .reverse()
         );
+        
+        const lastDeliveredMessage = res.data.messages.find(
+          (message) =>
+            message.isUserSender === false && message.status === "delivered"
+        );
+        if (lastDeliveredMessage) {
+          socket.emit("updateMessageStatus", {
+            messageId: lastDeliveredMessage.id,
+            status: "read",
+          });
+        }
       } catch (err) {
         console.error(err);
       }
     };
-
+  
     fetchMessages();
-
-// Inside useEffect
-socket.on("privateMessage", (message) => {
-  console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
-  if (message.chatId === chatId) { // Add this condition
-    setMessages((prevMessages) => {
-      return [
-        ...prevMessages, // Existing messages at the top
-        {
-          ...message,
-          isUserSender: message.sender === user.username,
-        }, // New message at the bottom
-      ];
+  
+    socket.on("privateMessage", (message) => {
+      console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
+      if (message.chatId === chatId) {
+        setMessages((prevMessages) => {
+          return [
+            ...prevMessages,
+            {
+              ...message,
+              isUserSender: message.sender === user.username,
+              status: "delivered",
+            },
+          ];
+        });
+      }
     });
-  }
-});
-
-
-
+  
+    socket.on("updateMessageStatus", ({ messageId, status }) => {
+      setMessages((prevMessages) => {
+        return prevMessages.map((message) => {
+          if (message.id === messageId) {
+            return { ...message, status };
+          }
+          return message;
+        });
+      });
+    });
+  
     return () => {
       socket.off("privateMessage");
+      socket.off("updateMessageStatus");
       socket.emit("logout", user.id);
       socket.close();
     };
   }, [chatId, user]);
+  
+
 
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
-      const receiverUsername = chatId.split('-').find(username => username !== user.username);
-      const messageChatId = [user.username, receiverUsername].sort().join('-');
-    
+      const receiverUsername = chatId
+        .split("-")
+        .find((username) => username !== user.username);
+      const messageChatId = [user.username, receiverUsername].sort().join("-");
+
       const message = {
         text: newMessage,
         chatId: messageChatId,
         sender: user.username,
         receiver: receiverUsername,
         timestamp: Date.now(),
-        isUserSender: true
+        isUserSender: true,
+        status: "sent", // Add status here
       };
-        
-      console.log(`emit sendPrivateMessage with message: ${JSON.stringify(message)}`);
+
+      console.log(
+        `emit sendPrivateMessage with message: ${JSON.stringify(message)}`
+      );
       socket.emit("sendPrivateMessage", message);
-        
+
       console.log(`Sent message to server: ${JSON.stringify(message)}`);
       setNewMessage("");
     } catch (err) {
       console.error(err);
     }
   };
-  
+
+  useEffect(() => {
+    const handleFocus = () => {
+      // Update the status of all received messages to 'read'
+      const receivedMessages = messages.filter(
+        (message) =>
+          message.isUserSender === false && message.status === "delivered"
+      );
+      receivedMessages.forEach((message) => {
+        socket.emit("updateMessageStatus", {
+          messageId: message.id,
+          status: "read",
+        });
+      });
+    };
+    
+
+    // Add the focus event listener to the input field
+    const inputField = inputRef.current;
+    if (inputField) {
+      inputField.addEventListener("focus", handleFocus);
+
+      return () => {
+        inputField.removeEventListener("focus", handleFocus);
+      };
+    }
+  }, [messages, socket]);
 
   return (
     <div>
@@ -1667,13 +1757,13 @@ socket.on("privateMessage", (message) => {
       </h2>
 
       {messages.map((message, index) => {
-        console.log("Message object:", message); // Log the message object
         return (
           <div key={index}>
             <p>{message.text}</p>
             <p>
               By: {message.sender === user.username ? "You" : message.sender}
             </p>
+            {message.isUserSender && <p>Status: {message.status || "sent"}</p>}
           </div>
         );
       })}
@@ -1682,8 +1772,24 @@ socket.on("privateMessage", (message) => {
         <input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
+          onClick={() => {
+            // Get the last delivered message sent by the current user
+            const lastDeliveredMessage = messages.find(
+              (message) =>
+                message.isUserSender === true && message.status === "delivered"
+            );
+            if (lastDeliveredMessage) {
+              // Emit an event to the server to update the status to 'read'
+              socket.emit("updateMessageStatus", {
+                messageId: lastDeliveredMessage.id,
+                status: "read",
+              });
+            }
+          }}
           placeholder="Send a message"
+          id="message-input"
         />
+
         <button type="submit">Send</button>
       </form>
     </div>
@@ -1895,19 +2001,51 @@ export default RoomList;
 
 -AuthContext.js
 // AuthContext.js
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
+import io from 'socket.io-client';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [socket, setSocket] = useState(null);
+
+  // Create socket connection when user logs in
+  const login = (username) => {
+    setUser({ username });
+
+    const newSocket = io('http://localhost:5000');
+    newSocket.emit('login', username);
+    setSocket(newSocket);
+  };
+
+  // Disconnect socket when user logs out
+  const logout = () => {
+    setUser(null);
+
+    if (socket) {
+      socket.emit('logout', user.username);
+      socket.disconnect();
+    }
+    setSocket(null);
+  };
+
+  // Cleanup socket connection on unmount
+  useEffect(() => {
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [socket]);
 
   return (
-    <AuthContext.Provider value={{ user, setUser }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
+
 
 ==============================
 

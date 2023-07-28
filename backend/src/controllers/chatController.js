@@ -28,7 +28,7 @@ exports.sendMessage = async (req) => {
     const message = {
       id: messageId, 
       sender: username, 
-      roomId,  // roomId is used instead of chatId
+      roomId, 
       text, 
       timestamp
     };
@@ -108,7 +108,9 @@ exports.sendDirectMessage = async (req) => {
       "text",
       text,
       "timestamp",
-      timestamp
+      timestamp,
+      "status",
+      "delivered"
     );
     await Message.lpush(`direct:${chatId}:messages`, messageId);
 
@@ -117,7 +119,8 @@ exports.sendDirectMessage = async (req) => {
       sender: sender,
       chatId,
       text,
-      timestamp
+      timestamp,
+      status: "delivered"
     };
     console.log(`Emitting 'privateMessage' event with message: ${JSON.stringify(message)}`);
     req.io.emit("privateMessage", message); // Replace io.to(chatId).emit with io.emit
@@ -128,6 +131,8 @@ exports.sendDirectMessage = async (req) => {
     throw new Error("An error occurred while sending the message");
   }
 };
+
+
 
 
 exports.getPrivateMessages = async (req, res, next) => {
@@ -158,6 +163,7 @@ exports.getPrivateMessages = async (req, res, next) => {
   }
 };
 
+
 exports.getConversation = async (req, res, next) => {
   const { id: senderId } = req.user;
   const { receiverId } = req.params;
@@ -184,6 +190,38 @@ exports.getConversation = async (req, res, next) => {
     console.error("Get conversation error:", error);
     res.status(500).json({
       error: "An error occurred while getting the conversation",
+      details: error.message,
+    });
+  }
+};
+
+exports.updateMessageStatus = async (req, res, next) => {
+  const { messageId, status } = req.body;
+  const { username: senderUsername } = req.user;
+
+  try {
+    const message = await Message.hgetall(`directMessage:${messageId}`);
+    if (message.sender === senderUsername) {
+      throw new Error("You cannot update the status of a message you sent");
+    }
+
+    await Message.hset(`directMessage:${messageId}`, "status", status);
+    console.log(`Updated status of message ${messageId} to ${status}`);
+
+    const updatedMessage = {
+      id: messageId,
+      sender: message.sender,
+      chatId: message.chatId,
+      text: message.text,
+      timestamp: message.timestamp,
+      status
+    };
+    req.io.emit("updateMessageStatus", updatedMessage);
+    res.status(200).json({ message: "Message status updated successfully" });
+  } catch (error) {
+    console.error("Update message status error:", error);
+    res.status(500).json({
+      error: "An error occurred while updating the message status",
       details: error.message,
     });
   }

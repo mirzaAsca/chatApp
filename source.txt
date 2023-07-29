@@ -435,9 +435,6 @@ exports.updateMessageStatus = async (req, res, next) => {
 
   try {
     const message = await Message.hgetall(`directMessage:${messageId}`);
-    if (message.sender === senderUsername) {
-      throw new Error("You cannot update the status of a message you sent");
-    }
 
     await Message.hset(`directMessage:${messageId}`, "status", status);
     console.log(`Updated status of message ${messageId} to ${status}`);
@@ -460,6 +457,7 @@ exports.updateMessageStatus = async (req, res, next) => {
     });
   }
 };
+
 
 
 ==============================
@@ -743,9 +741,22 @@ module.exports = function(server) {
       io.to(message.roomId).emit('receiveMessage', message);
     });
 
-    socket.on('updateMessageStatus', (message) => {
-      io.emit('updateMessageStatus', message);
+    socket.on('updateMessageStatus', async ({ messageId, status }) => {
+      console.log(`Received updateMessageStatus event from client with message ID: ${messageId} and status: ${status}`);
+      
+      try {
+        // Update the message status in the database
+        await Message.hset(`directMessage:${messageId}`, 'status', status);
+        console.log(`Updated status of message ${messageId} to ${status}`);
+        
+        // Emit an updateMessageStatus event back to the clients with the updated message status
+        io.emit('updateMessageStatus', { messageId, status });
+      } catch (error) {
+        console.error('Error updating message status:', error);
+      }
     });
+    
+    
 
     socket.on('disconnect', () => {
       console.log('Client disconnected');
@@ -1035,7 +1046,12 @@ router.post("/sendDirect", authenticate, apiLimiter, chatController.sendDirectMe
 router.get("/messages/:roomId", authenticate, chatController.getMessages);
 router.get("/privateMessages/:chatId", authenticate, chatController.getPrivateMessages); // Modified route
 router.get('/conversation/:receiverId', authenticate, chatController.getConversation);
-router.put("/updateMessageStatus", authenticate, chatController.updateMessageStatus);
+router.get('/lastReadMessage/:userId/:chatId', async (req, res, next) => {
+  const { userId, chatId } = req.params;
+  const readMessagesKey = `readMessages:${userId}:${chatId}`;
+  const lastReadMessageId = await client.get(readMessagesKey);
+  res.json(lastReadMessageId || null);
+});
 
 
 module.exports = router;
@@ -1606,12 +1622,12 @@ const PrivateChat = ({ user }) => {
 
   useEffect(() => {
     socket = io("http://localhost:5000");
-  
+
     socket.on("connect", () => {
       console.log(`Socket connected with ID: ${socket.id}`);
       socket.emit("login", user.id);
     });
-  
+
     const fetchMessages = async () => {
       try {
         console.log(`Fetching messages for chatId: ${chatId}`);
@@ -1621,12 +1637,14 @@ const PrivateChat = ({ user }) => {
         const messageChatId = [user.username, receiverUsername]
           .sort()
           .join("-");
-  
+
+        // Fetch messages
         const res = await axios.get(
           `http://localhost:5000/api/chat/privateMessages/${messageChatId}`,
           { withCredentials: true }
         );
-  
+
+        // Adding the isUserSender property to each message and reverse the order
         setMessages(
           res.data.messages
             .map((message) => {
@@ -1637,24 +1655,13 @@ const PrivateChat = ({ user }) => {
             })
             .reverse()
         );
-        
-        const lastDeliveredMessage = res.data.messages.find(
-          (message) =>
-            message.isUserSender === false && message.status === "delivered"
-        );
-        if (lastDeliveredMessage) {
-          socket.emit("updateMessageStatus", {
-            messageId: lastDeliveredMessage.id,
-            status: "read",
-          });
-        }
       } catch (err) {
         console.error(err);
       }
     };
-  
+
     fetchMessages();
-  
+
     socket.on("privateMessage", (message) => {
       console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
       if (message.chatId === chatId) {
@@ -1670,7 +1677,8 @@ const PrivateChat = ({ user }) => {
         });
       }
     });
-  
+
+    // Listen for status updates from the server
     socket.on("updateMessageStatus", ({ messageId, status }) => {
       setMessages((prevMessages) => {
         return prevMessages.map((message) => {
@@ -1681,7 +1689,7 @@ const PrivateChat = ({ user }) => {
         });
       });
     });
-  
+
     return () => {
       socket.off("privateMessage");
       socket.off("updateMessageStatus");
@@ -1689,8 +1697,6 @@ const PrivateChat = ({ user }) => {
       socket.close();
     };
   }, [chatId, user]);
-  
-
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -1722,32 +1728,50 @@ const PrivateChat = ({ user }) => {
     }
   };
 
-  useEffect(() => {
-    const handleFocus = () => {
-      // Update the status of all received messages to 'read'
-      const receivedMessages = messages.filter(
-        (message) =>
-          message.isUserSender === false && message.status === "delivered"
-      );
-      receivedMessages.forEach((message) => {
-        socket.emit("updateMessageStatus", {
-          messageId: message.id,
-          status: "read",
-        });
+// Create a reference for the messages state
+const messagesRef = useRef(messages);
+
+useEffect(() => {
+  // Update the messagesRef current value whenever messages changes
+  messagesRef.current = messages;
+  console.log('Messages state updated:', messages);  // Log the updated messages state
+}, [messages]);
+
+useEffect(() => {
+  const handleFocus = () => {
+    console.log('Input field received focus');  // Log when the function is triggered
+
+    // Use messagesRef.current instead of messages
+    const lastDeliveredMessage = messagesRef.current.find(
+      (message) =>
+        message.isUserSender === true && message.status === "delivered"
+    );
+    console.log('Last delivered message:', lastDeliveredMessage);  // Log the found message
+
+    if (lastDeliveredMessage) {
+      socket.emit("updateMessageStatus", {
+        messageId: lastDeliveredMessage.id,
+        status: "read",
       });
-    };
-    
-
-    // Add the focus event listener to the input field
-    const inputField = inputRef.current;
-    if (inputField) {
-      inputField.addEventListener("focus", handleFocus);
-
-      return () => {
-        inputField.removeEventListener("focus", handleFocus);
-      };
+      console.log(`Sent updateMessageStatus event to server with message ID: ${lastDeliveredMessage.id} and status: read`);
     }
-  }, [messages, socket]);
+  };
+
+  const inputField = inputRef.current;
+  console.log('inputField:', inputField);  // Log the input field
+
+  if (inputField) {
+    inputField.addEventListener("focus", handleFocus);
+    console.log('Focus event listener added');  // Log that the event listener was added
+
+    return () => {
+      inputField.removeEventListener("focus", handleFocus);
+      console.log('Focus event listener removed');  // Log that the event listener was removed
+    };
+  }
+}, [socket, newMessage]);  // Remove messages from the dependencies
+
+  
 
   return (
     <div>
@@ -1772,22 +1796,9 @@ const PrivateChat = ({ user }) => {
         <input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onClick={() => {
-            // Get the last delivered message sent by the current user
-            const lastDeliveredMessage = messages.find(
-              (message) =>
-                message.isUserSender === true && message.status === "delivered"
-            );
-            if (lastDeliveredMessage) {
-              // Emit an event to the server to update the status to 'read'
-              socket.emit("updateMessageStatus", {
-                messageId: lastDeliveredMessage.id,
-                status: "read",
-              });
-            }
-          }}
           placeholder="Send a message"
           id="message-input"
+          ref={inputRef} // Assign the ref to inputRef
         />
 
         <button type="submit">Send</button>

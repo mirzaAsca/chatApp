@@ -90,7 +90,6 @@ const PrivateChat = ({ user }) => {
     };
   }, [chatId, user]);
 
-
   const sendMessage = async (e) => {
     e.preventDefault();
     try {
@@ -121,32 +120,50 @@ const PrivateChat = ({ user }) => {
     }
   };
 
-  useEffect(() => {
-    const handleFocus = () => {
-      // Update the status of all received messages to 'read'
-      const receivedMessages = messages.filter(
-        (message) =>
-          message.isUserSender === false && message.status === "delivered"
-      );
-      receivedMessages.forEach((message) => {
-        socket.emit("updateMessageStatus", {
-          messageId: message.id,
-          status: "read",
-        });
+// Create a reference for the messages state
+const messagesRef = useRef(messages);
+
+useEffect(() => {
+  // Update the messagesRef current value whenever messages changes
+  messagesRef.current = messages;
+  console.log('Messages state updated:', messages);  // Log the updated messages state
+}, [messages]);
+
+useEffect(() => {
+  const handleFocus = () => {
+    console.log('Input field received focus');  // Log when the function is triggered
+
+    // Use messagesRef.current instead of messages
+    const lastDeliveredMessage = messagesRef.current.find(
+      (message) =>
+        message.isUserSender === true && message.status === "delivered"
+    );
+    console.log('Last delivered message:', lastDeliveredMessage);  // Log the found message
+
+    if (lastDeliveredMessage) {
+      socket.emit("updateMessageStatus", {
+        messageId: lastDeliveredMessage.id,
+        status: "read",
       });
-    };
-    
-
-    // Add the focus event listener to the input field
-    const inputField = inputRef.current;
-    if (inputField) {
-      inputField.addEventListener("focus", handleFocus);
-
-      return () => {
-        inputField.removeEventListener("focus", handleFocus);
-      };
+      console.log(`Sent updateMessageStatus event to server with message ID: ${lastDeliveredMessage.id} and status: read`);
     }
-  }, [messages, socket]);
+  };
+
+  const inputField = inputRef.current;
+  console.log('inputField:', inputField);  // Log the input field
+
+  if (inputField) {
+    inputField.addEventListener("focus", handleFocus);
+    console.log('Focus event listener added');  // Log that the event listener was added
+
+    return () => {
+      inputField.removeEventListener("focus", handleFocus);
+      console.log('Focus event listener removed');  // Log that the event listener was removed
+    };
+  }
+}, [socket, newMessage]);  // Remove messages from the dependencies
+
+  
 
   return (
     <div>
@@ -171,22 +188,9 @@ const PrivateChat = ({ user }) => {
         <input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onClick={() => {
-            // Get the last delivered message sent by the current user
-            const lastDeliveredMessage = messages.find(
-              (message) =>
-                message.isUserSender === true && message.status === "delivered"
-            );
-            if (lastDeliveredMessage) {
-              // Emit an event to the server to update the status to 'read'
-              socket.emit("updateMessageStatus", {
-                messageId: lastDeliveredMessage.id,
-                status: "read",
-              });
-            }
-          }}
           placeholder="Send a message"
           id="message-input"
+          ref={inputRef} // Assign the ref to inputRef
         />
 
         <button type="submit">Send</button>

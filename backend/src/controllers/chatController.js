@@ -201,9 +201,6 @@ exports.updateMessageStatus = async (req, res, next) => {
 
   try {
     const message = await Message.hgetall(`directMessage:${messageId}`);
-    if (message.sender === senderUsername) {
-      throw new Error("You cannot update the status of a message you sent");
-    }
 
     await Message.hset(`directMessage:${messageId}`, "status", status);
     console.log(`Updated status of message ${messageId} to ${status}`);
@@ -226,3 +223,4 @@ exports.updateMessageStatus = async (req, res, next) => {
     });
   }
 };
+

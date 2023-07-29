@@ -81,10 +81,22 @@ module.exports = function(server) {
       io.to(message.roomId).emit('receiveMessage', message);
     });
 
-    socket.on('saveReadMessage', ({ userId, chatId, messageId }) => {
-      const readMessagesKey = `readMessages:${userId}:${chatId}`;
-      client.set(readMessagesKey, messageId);
+    socket.on('updateMessageStatus', async ({ messageId, status }) => {
+      console.log(`Received updateMessageStatus event from client with message ID: ${messageId} and status: ${status}`);
+      
+      try {
+        // Update the message status in the database
+        await Message.hset(`directMessage:${messageId}`, 'status', status);
+        console.log(`Updated status of message ${messageId} to ${status}`);
+        
+        // Emit an updateMessageStatus event back to the clients with the updated message status
+        io.emit('updateMessageStatus', { messageId, status });
+      } catch (error) {
+        console.error('Error updating message status:', error);
+      }
     });
+    
+    
 
     socket.on('disconnect', () => {
       console.log('Client disconnected');

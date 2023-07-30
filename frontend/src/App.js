@@ -15,6 +15,7 @@ import ProtectedChatRoom from "./components/ProtectedChatRoom";
 import LogoutButton from "./components/LogoutButton";
 import PrivateChat from "./components/PrivateChat";
 import { RoomsProvider } from './contexts/RoomsContext';
+import "./App.css";
 
 const MainApp = () => {
   const { user } = useContext(AuthContext);

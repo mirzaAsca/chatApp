@@ -2,15 +2,24 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 import { useParams } from "react-router-dom";
+import '../App.css';
 
 let socket;
 
 const PrivateChat = ({ user }) => {
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const { chatId: encodedChatId } = useParams();
   const chatId = decodeURIComponent(encodedChatId);
   const inputRef = useRef(null);
+  const chatContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
+
 
   useEffect(() => {
     socket = io("http://localhost:5000");
@@ -71,16 +80,25 @@ const PrivateChat = ({ user }) => {
     });
 
     // Listen for status updates from the server
-    socket.on("updateMessageStatus", ({ messageId, status }) => {
-      setMessages((prevMessages) => {
-        return prevMessages.map((message) => {
-          if (message.id === messageId) {
-            return { ...message, status };
-          }
-          return message;
+    socket.on("privateMessage", (message) => {
+      console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
+      if (message.chatId === chatId) {
+        setMessages((prevMessages) => {
+          return [
+            ...prevMessages,
+            {
+              ...message,
+              isUserSender: message.sender === user.username,
+              status: "delivered",
+            },
+          ];
         });
-      });
+    
+        // Scroll to bottom after receiving a new message
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
     });
+    
 
     return () => {
       socket.off("privateMessage");
@@ -90,111 +108,89 @@ const PrivateChat = ({ user }) => {
     };
   }, [chatId, user]);
 
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    try {
-      const receiverUsername = chatId
-        .split("-")
-        .find((username) => username !== user.username);
-      const messageChatId = [user.username, receiverUsername].sort().join("-");
-
-      const message = {
-        text: newMessage,
-        chatId: messageChatId,
-        sender: user.username,
-        receiver: receiverUsername,
-        timestamp: Date.now(),
-        isUserSender: true,
-        status: "sent", // Add status here
-      };
-
-      console.log(
-        `emit sendPrivateMessage with message: ${JSON.stringify(message)}`
-      );
-      socket.emit("sendPrivateMessage", message);
-
-      console.log(`Sent message to server: ${JSON.stringify(message)}`);
-      setNewMessage("");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-// Create a reference for the messages state
-const messagesRef = useRef(messages);
-
-useEffect(() => {
-  // Update the messagesRef current value whenever messages changes
-  messagesRef.current = messages;
-  console.log('Messages state updated:', messages);  // Log the updated messages state
-}, [messages]);
-
-useEffect(() => {
-  const handleFocus = () => {
-    console.log('Input field received focus');  // Log when the function is triggered
-
-    // Use messagesRef.current instead of messages
-    const lastDeliveredMessage = messagesRef.current.find(
-      (message) =>
-        message.isUserSender === true && message.status === "delivered"
-    );
-    console.log('Last delivered message:', lastDeliveredMessage);  // Log the found message
-
-    if (lastDeliveredMessage) {
-      socket.emit("updateMessageStatus", {
-        messageId: lastDeliveredMessage.id,
-        status: "read",
-      });
-      console.log(`Sent updateMessageStatus event to server with message ID: ${lastDeliveredMessage.id} and status: read`);
-    }
-  };
-
-  const inputField = inputRef.current;
-  console.log('inputField:', inputField);  // Log the input field
-
-  if (inputField) {
-    inputField.addEventListener("focus", handleFocus);
-    console.log('Focus event listener added');  // Log that the event listener was added
-
-    return () => {
-      inputField.removeEventListener("focus", handleFocus);
-      console.log('Focus event listener removed');  // Log that the event listener was removed
-    };
-  }
-}, [socket, newMessage]);  // Remove messages from the dependencies
-
   
 
+  const sendMessage = async (e) => {
+    e.preventDefault();
+
+    const receiverUsername = chatId.split("-").find((username) => username !== user.username);
+    const messageChatId = [user.username, receiverUsername].sort().join("-");
+
+    const message = {
+      text: inputValue,
+      chatId: messageChatId,
+      sender: user.username,
+      receiver: receiverUsername,
+      timestamp: Date.now(),
+      isUserSender: true,
+      status: "sent",
+    };
+
+    socket.emit("sendPrivateMessage", message);
+
+    setInputValue("");
+  };
+
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
   return (
-    <div>
-      <h2>
-        Chat with:{" "}
-        {chatId.split("-").find((username) => username !== user.username)}
-      </h2>
+    <div className="chat">
+      <div className="chat-header clearfix">
+        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/195612/chat_avatar_01_green.jpg" alt="avatar" />
+  
+        <div className="chat-about">
+          <div className="chat-with">Chat with {chatId.split("-").find((username) => username !== user.username)}</div>
+          <div className="chat-num-messages">already {messages.length} messages</div>
+        </div>
+        <i className="fa fa-star"></i>
+      </div>
+  
+      <div className="chat-history" ref={chatContainerRef}>
+        <ul>
+          {messages.map((message, index) => (
+            <li className="clearfix" key={index}>
+              <div className={`message-data ${message.isUserSender ? 'align-right' : 'align-left'}`}>
+                <span className="message-data-time">
+                  {new Date(message.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="message-data-name">{message.isUserSender ? "You" : message.sender}</span>
+                <span className="message-data-status">
+                  Status: {message.status || 'sent'}
+                </span>
+                <i className={`fa fa-circle ${message.isUserSender ? 'me' : ''}`}></i>
+              </div>
+              <div className={`message ${message.isUserSender ? 'my' : 'other'}-message float-right`}>
+                {message.text}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+  
+      <div className="chat-message clearfix">
+        <form onSubmit={sendMessage}>
+        <textarea
+  name="message-to-send"
+  id="message-to-send"
+  placeholder="Type your message"
+  rows="3"
+  value={inputValue}
+  onChange={handleInputChange}
+  onKeyPress={(e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(e);
+    }
+  }}
+></textarea>
 
-      {messages.map((message, index) => {
-        return (
-          <div key={index}>
-            <p>{message.text}</p>
-            <p>
-              By: {message.sender === user.username ? "You" : message.sender}
-            </p>
-            {message.isUserSender && <p>Status: {message.status || "sent"}</p>}
-          </div>
-        );
-      })}
-
-      <form onSubmit={sendMessage}>
-        <input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Send a message"
-          id="message-input"
-          ref={inputRef} // Assign the ref to inputRef
-        />
-
-        <button type="submit">Send</button>
-      </form>
+          <i className="fa fa-file-o"></i> &nbsp;&nbsp;&nbsp;
+          <i className="fa fa-file-image-o"></i>
+          <button type="submit">Send</button>
+        </form>
+      </div>
     </div>
   );
 };

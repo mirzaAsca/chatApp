@@ -1,50 +1,48 @@
+// Import required modules
 const jwt = require('jsonwebtoken');
-const cookieParser = require('cookie-parser');
 const IORedis = require('ioredis');
 
+// Initialize a new Redis client
 const client = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
 });
 
+// Middleware function to authenticate the user
 exports.authenticate = async (req, res, next) => {
-  console.log('authenticate middleware called');  // Log that the middleware has been called
-
+  // Retrieve the token from the request cookies
   const token = req.cookies.token;
-  console.log('Incoming token:', token); // Add this line
-  
+
+  // If no token is provided, return an error
   if (!token) {
-    console.log('No token provided');  // Log that no token was provided
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  // Check if the token is invalidated
+  // Check if the token has been invalidated
   const isInvalidated = await client.sismember("invalidatedTokens", token);
+  
+  // If the token is invalidated, return an error
   if (isInvalidated) {
-    console.log('The token is invalidated');  // Log that the token was invalidated
     return res.status(401).json({ error: 'The token is invalidated' });
   }
 
-  // Check if the JWT_SECRET is defined
+  // If the JWT_SECRET environment variable is not defined, return an error
   if (!process.env.JWT_SECRET) {
-    console.log('Internal server error - JWT_SECRET not defined');  // Log that JWT_SECRET is not defined
     return res.status(500).json({ error: 'Internal server error' });
   }
 
   try {
-    console.log('Before jwt.verify');  // Add this line
+    // Verify the JWT token and extract the user information
     const user = jwt.verify(token, process.env.JWT_SECRET);
-    console.log(`Decoded user from JWT: ${JSON.stringify(user)}`);  // Add this line
-    console.log('After jwt.verify');  // Add this line
-    console.log('User:', user);  // Log the user object
+
+    // Assign the user object to the request object
     req.user = user;
+
+    // Continue to the next middleware function
     next();
-} catch (error) {
-    console.log('jwt.verify error:', error.message);
+  } catch (error) {
+    // If the JWT verification fails, return an error
     return res.status(401).json({ error: 'Invalid token' });
-}
-
-
-
+  }
 };

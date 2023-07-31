@@ -11,8 +11,10 @@ import { ReactComponent as CorrectIcon } from "./media/correct.svg";
 import ChatRoom from "./ChatRoom";
 
 const RoomList = () => {
+  // Get the rooms data from the RoomsContext
   const { rooms, setRooms } = useContext(RoomsContext);
 
+  // Initialize hooks and states
   const navigate = useNavigate();
   const { user } = UseAuth();
   const [selectedRoomMembers, setSelectedRoomMembers] = useState([]);
@@ -20,18 +22,18 @@ const RoomList = () => {
   const [chatRoomMembers, setChatRoomMembers] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [members, setMembers] = useState([]);
-  
 
+  // Fetch the list of rooms from the server on component mount
   useEffect(() => {
     if (!user) {
-      navigate("/login");
+      navigate("/login"); // Redirect to login page if user is not logged in
     } else {
       const fetchRooms = async () => {
         try {
           const res = await axios.get("http://localhost:5000/api/rooms", {
-            withCredentials: true,
+            withCredentials: true, // Send credentials along with the request
           });
-          setRooms(res.data.rooms);
+          setRooms(res.data.rooms); // Update the state with fetched rooms data
         } catch (err) {
           console.error(err);
         }
@@ -41,34 +43,36 @@ const RoomList = () => {
     }
   }, [user, navigate]);
 
+  // Function to delete a room by its ID
   const deleteRoom = async (roomId) => {
     try {
       await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
-        withCredentials: true,
+        withCredentials: true, // Send credentials along with the request
       });
       const res = await axios.get("http://localhost:5000/api/rooms", {
-        withCredentials: true,
+        withCredentials: true, // Send credentials along with the request
       });
-      setRooms(res.data.rooms);
+      setRooms(res.data.rooms); // Update the state with updated rooms data after deletion
     } catch (err) {
       console.error(err);
     }
   };
 
+  // Function to join a room by its ID
   const joinRoom = async (roomId) => {
     try {
       await axios.post(
         `http://localhost:5000/api/rooms/join/${roomId}`,
         {},
-        { withCredentials: true }
+        { withCredentials: true } // Send credentials along with the request
       );
-      // Update the rooms state
+      // Update the rooms state by adding the current user to the joined room's members list
       setRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === roomId) {
             return {
               ...room,
-              members: [...room.members, user.username]
+              members: [...room.members, user.username],
             };
           } else {
             return room;
@@ -79,22 +83,22 @@ const RoomList = () => {
       console.error(err);
     }
   };
-  
 
+  // Function to leave a room by its ID
   const leaveRoom = async (roomId) => {
     try {
       await axios.post(
         `http://localhost:5000/api/rooms/leave/${roomId}`,
         {},
-        { withCredentials: true }
+        { withCredentials: true } // Send credentials along with the request
       );
-      // Update the rooms state
+      // Update the rooms state by removing the current user from the left room's members list
       setRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === roomId) {
             return {
               ...room,
-              members: room.members.filter(member => member !== user.username)
+              members: room.members.filter((member) => member !== user.username),
             };
           } else {
             return room;
@@ -105,8 +109,8 @@ const RoomList = () => {
       console.error(err);
     }
   };
-  
 
+  // Function to handle click on a room, set the selected room's members and ID
   const handleRoomClick = (members, roomId) => {
     setSelectedRoomMembers(members);
     setSelectedRoomId(roomId);
@@ -143,8 +147,7 @@ const RoomList = () => {
           </div>
         ))}
       </div>
-      {selectedRoomId && (
-      selectedRoomMembers.includes(user.username) ? (
+      {selectedRoomId && selectedRoomMembers.includes(user.username) ? (
         <ChatRoom
           user={user}
           roomId={selectedRoomId}
@@ -156,8 +159,7 @@ const RoomList = () => {
         />
       ) : (
         <div>You are not a member, please join the room!</div>
-      )
-    )}
+      )}
       <div className="user-list">
         {members.map((member, index) =>
           member !== user.username ? (

@@ -1,55 +1,56 @@
-console.log("REDIS_HOST:", process.env.REDIS_HOST);
-console.log("REDIS_PORT:", process.env.REDIS_PORT);
-console.log("REDIS_PASSWORD:", process.env.REDIS_PASSWORD);
-
+// Required packages
 const IORedis = require("ioredis");
 const bcrypt = require("bcrypt");
 
-console.log("About to create Redis client");
-
-// Create Redis client
+// Create a Redis client
+// The `retryStrategy` function is used to control how often and when to retry connecting.
+// The delay between retries is calculated as a minimum of the retry attempt times 50 and 2000 milliseconds.
 const redisClient = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
   retryStrategy: function (times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
+    return Math.min(times * 50, 2000);
   },
 });
 
-console.log("Redis client created");
-
+// Event listeners for the Redis client.
+// On 'connect', the client will log a success message.
 redisClient.on("connect", () => {
-  console.log("Redis client connected");
+  console.log("Successfully connected to Redis");
 });
 
+// On 'error', the client will log the error.
 redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
-console.log("Successfully connected to Redis");
-
-// Redis functions
-async function addUser(username, password) {
-  const hashedPassword = await hashPassword(password);
-  await redisClient.hset(`user:${username}`, "password", hashedPassword);
-}
-
+// A helper function to hash a password using bcrypt.
 async function hashPassword(password) {
   const salt = await bcrypt.genSalt(10);
   return await bcrypt.hash(password, salt);
 }
 
+// A function to add a new user to the Redis store.
+// The user's password is hashed before being stored.
+async function addUser(username, password) {
+  const hashedPassword = await hashPassword(password);
+  await redisClient.hset(`user:${username}`, "password", hashedPassword);
+}
+
+// A function to verify if a user exists in the Redis store.
+// It checks if the 'password' field of the user exists.
 async function verifyUser(username) {
   const password = await redisClient.hget(`user:${username}`, 'password');
   return password !== null;
 }
 
+// A function to retrieve a user's data from the Redis store.
 async function getUser(username) {
   return await redisClient.hgetall(`user:${username}`);
 }
 
+// Expose the Redis client and helper functions as a module.
 module.exports = {
   addUser,
   verifyUser,

@@ -80,8 +80,8 @@ exports.logout = async (req, res, next) => {
     res.clearCookie("token");
 
     // Emit logout event
-    const io = require('../io'); // Import io from your io.js file
-    io.emit('logout', req.user.username); // assuming req.user.username is available
+    const io = req.io;
+    io.emit("logout", req.user.username); // assuming req.user.username is available
 
     res.status(200).json({ message: "User logged out successfully" });
   } catch (error) {
@@ -89,3 +89,4 @@ exports.logout = async (req, res, next) => {
     next(error);
   }
 };
+

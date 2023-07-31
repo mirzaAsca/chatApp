@@ -64,7 +64,6 @@
 │       │   ├── ProtectedRoute.js
 │       │   ├── RegisterForm.js
 │       │   ├── RoomList.js
-│       │   ├── Rooms.js
 │       │   └── media
 │       │       ├── correct.svg
 │       │       ├── delete.svg
@@ -89,90 +88,101 @@
 ==============================
 
 -db.js
+// Import the IORedis module.
 const IORedis = require('ioredis');
 
+// Initialize a new IORedis client with a configuration object.
+// The configuration options (host, port, password) are fetched from environment variables.
 const client = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
 });
 
+// Event listener for successful connection to Redis.
+// Logs a success message to the console when the client successfully connects to the Redis server.
 client.on('connect', () => {
   console.log('Connected to Redis...');
 });
 
+// Event listener for connection errors.
+// Logs an error message to the console if an error occurs while trying to connect to the Redis server.
 client.on('error', (err) => {
   console.log('Redis error: ', err);
 });
 
+// Export the client object for use in other parts of the application.
 module.exports = client;
 
 
 ==============================
 
 -socket.js
+// Import necessary modules
 const socketIo = require("socket.io");
 const chatController = require("../controllers/chatController");
 const Redis = require("ioredis");
 const { RateLimiterRedis } = require("rate-limiter-flexible");
 
+// Initialize Redis client with environment variables
 const redisClient = new Redis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
 });
 
+// Initialize RateLimiter to control the request rate
 const rateLimiter = new RateLimiterRedis({
   storeClient: redisClient,
   keyPrefix: "middleware",
-  points: 3, // 3 requests
+  points: 10, // 10 requests
   duration: 60, // per 60 seconds by IP
 });
 
 // Maintain a mapping of user IDs to their socket IDs
 const userSocketIds = {};
 
+// Socket configuration
 module.exports = (server, corsOptions) => {
   const io = socketIo(server, {
     cors: corsOptions,
   });
 
+  // Handle new connections
   io.on('connection', (socket) => {
     console.log('New client connected:', socket.id);
-    
+
+    // Handle user login
     socket.on('login', (userId) => {
       console.log(`User logged in with ID: ${userId}, Socket ID: ${socket.id}`);
       userSocketIds[userId] = socket.id;
       socket.join(userId);
-  
-      // Set user status to online
-      // Replace 'userId' with your actual user identifier
-      socket.broadcast.emit('userOnline', userId);
+      socket.broadcast.emit('userOnline', userId); // Announce the user's online status
     });
 
-    // Listen for userLogout event
+    // Handle user logout
     socket.on('userLogout', (username) => {
       console.log(`User logged out with username: ${username}`);
-      socket.broadcast.emit('userOffline', username);
+      socket.broadcast.emit('userOffline', username); // Announce the user's offline status
     });
+
+    // Handle disconnections
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
       
       // Find the user that got disconnected
       const disconnectedUser = Object.keys(userSocketIds).find(key => userSocketIds[key] === socket.id);
   
+      // If a user was found, remove them from the mapping and announce their offline status
       if (disconnectedUser) {
         delete userSocketIds[disconnectedUser];
-  
-        // Set user status to offline
-        // Replace 'disconnectedUser' with your actual user identifier
         socket.broadcast.emit('userOffline', disconnectedUser);
       }
     });
 
+    // Handle message sending
     socket.on("sendMessage", async (message) => {
       console.log("Received sendMessage event with message", message);
-
       rateLimiter
         .consume(socket.id)
         .then(async () => {
@@ -189,15 +199,13 @@ module.exports = (server, corsOptions) => {
           }
         })
         .catch((rejRes) => {
-          console.log(
-            `Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`
-          );
+          console.log(`Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`);
         });
     });
 
+    // Handle private message sending
     socket.on("sendPrivateMessage", async (message) => {
       console.log("Received sendPrivateMessage event with message", message);
-
       rateLimiter
         .consume(socket.id)
         .then(async () => {
@@ -205,7 +213,7 @@ module.exports = (server, corsOptions) => {
             body: message,
             user: { id: message.senderId },
             io: io,
-            userSocketIds: userSocketIds, // Add this line
+            userSocketIds: userSocketIds,
           };
           try {
             const result = await chatController.sendDirectMessage(req);
@@ -221,14 +229,8 @@ module.exports = (server, corsOptions) => {
           }
         })
         .catch((rejRes) => {
-          console.log(
-            `Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`
-          );
+          console.log(`Rate limit exceeded for ${socket.id}. Remaining points: ${rejRes.remainingPoints}`);
         });
-    });
-
-    socket.on("disconnect", () => {
-      console.log("Client disconnected:", socket.id);
     });
   });
 
@@ -239,20 +241,23 @@ module.exports = (server, corsOptions) => {
 ==============================
 
 -chatController.js
+// Importing required models
 const Message = require("../models/Message");
 const Room = require("../models/Room");
 
+// Controller to handle sending a message in a room
 exports.sendMessage = async (req) => {
   const { text, roomId } = req.body;
   const { username } = req.user;
 
+  // Check if the user is a member of the room
   const members = await Room.client.smembers(`room:${roomId}:members`);
-
   if (!members.includes(username)) {
     throw new Error("You are not a member of this room");
   }
 
   try {
+    // Create a new message and save it in Redis
     const messageId = await Message.incr("message:id");
     const timestamp = Date.now();
     await Message.hset(
@@ -266,16 +271,9 @@ exports.sendMessage = async (req) => {
     );
     await Message.lpush(`room:${roomId}:messages`, messageId);
 
-    const message = {
-      id: messageId, 
-      sender: username, 
-      roomId, 
-      text, 
-      timestamp
-    };
-
-    console.log(`Emitting 'receiveMessage' event with message: ${JSON.stringify(message)}`);
-    req.io.emit("receiveMessage", message); // Replace io.to(chatId).emit with io.emit
+    // Emit the 'receiveMessage' event to all clients
+    const message = { id: messageId, sender: username, roomId, text, timestamp };
+    req.io.emit("receiveMessage", message);
 
     return { status: 200, message: "Message sent successfully" };
   } catch (error) {
@@ -284,66 +282,50 @@ exports.sendMessage = async (req) => {
   }
 };
 
-
-
+// Controller to get all messages from a room
 exports.getMessages = async (req, res, next) => {
-  console.log("getMessages controller called");
-
   const roomId = req.params.roomId;
   const { username } = req.user;
 
-  console.log("roomId:", roomId);
-  console.log("username:", username);
-
+  // Check if the user is a member of the room
   const members = await Room.client.smembers(`room:${roomId}:members`);
-
-  console.log("members:", members);
-
   if (!members.includes(username)) {
     return res.status(403).json({ error: "You are not a member of this room" });
   }
 
   try {
+    // Fetch all messages from the room and return
     const messageIds = await Message.lrange(`room:${roomId}:messages`, 0, -1);
-    const messages = [];
-    for (let messageId of messageIds) {
-      const message = await Message.hgetall(`message:${messageId}`);
-      message.id = messageId;
-      messages.push(message);
-    }
+    const messages = await Promise.all(
+      messageIds.map(async (messageId) => {
+        const message = await Message.hgetall(`message:${messageId}`);
+        message.id = messageId;
+        return message;
+      })
+    );
 
-    console.log("messages:", messages);
     res.status(200).json({ messages });
   } catch (error) {
     console.error("Get messages error:", error);
-    res.status(500).json({
-      error: "An error occurred while getting the messages",
-      details: error.message,
-    });
+    res.status(500).json({ error: "An error occurred while getting the messages", details: error.message });
   }
 };
 
+// Controller to handle sending a direct message
 exports.sendDirectMessage = async (req) => {
-  console.log(`req.user: ${JSON.stringify(req.user)}`);
-
   const { text, sender, receiver } = req.body;
-
-  console.log(`sender: ${sender}`);
-  console.log(`receiver: ${receiver}`);
 
   // Compute the chatId
   const chatId = [sender, receiver].sort().join('-');
-  
-  console.log(`chatId: ${chatId}`);
 
   try {
+    // Create a new direct message and save it in Redis
     const messageId = await Message.incr("directMessage:id");
     const timestamp = Date.now();
-
     await Message.hset(
       `directMessage:${messageId}`,
       "sender",
-      sender,  // Change senderUsername to sender
+      sender,
       "chatId",
       chatId,
       "text",
@@ -355,16 +337,9 @@ exports.sendDirectMessage = async (req) => {
     );
     await Message.lpush(`direct:${chatId}:messages`, messageId);
 
-    const message = {
-      id: messageId,
-      sender: sender,
-      chatId,
-      text,
-      timestamp,
-      status: "delivered"
-    };
-    console.log(`Emitting 'privateMessage' event with message: ${JSON.stringify(message)}`);
-    req.io.emit("privateMessage", message); // Replace io.to(chatId).emit with io.emit
+    // Emit the 'privateMessage' event to all clients
+    const message = { id: messageId, sender, chatId, text, timestamp, status: "delivered" };
+    req.io.emit("privateMessage", message);
 
     return { status: 200, message: "Message sent successfully" };
   } catch (error) {
@@ -373,197 +348,189 @@ exports.sendDirectMessage = async (req) => {
   }
 };
 
-
-
-
+// Controller to get all direct messages between two users
 exports.getPrivateMessages = async (req, res, next) => {
   const chatId = req.params.chatId;
-  const { username: senderUsername } = req.user;
-  console.log('Received chatId:', chatId); // Add this line
-
 
   try {
+    // Fetch all direct messages between the two users and return
     const messageIds = await Message.lrange(`direct:${chatId}:messages`, 0, -1);
-
-    const messages = [];
-    for (let messageId of messageIds) {
-      const message = await Message.hgetall(`directMessage:${messageId}`);
-      message.id = messageId;
-      messages.push(message);
-    }
-
-    console.log(`Fetched private messages: ${JSON.stringify(messages)}`);
+    const messages = await Promise.all(
+      messageIds.map(async (messageId) => {
+        const message = await Message.hgetall(`directMessage:${messageId}`);
+        message.id = messageId;
+        return message;
+      })
+    );
 
     res.status(200).json({ messages });
   } catch (error) {
     console.error("Get private messages error:", error);
-    res.status(500).json({
-      error: "An error occurred while getting the messages",
-      details: error.message,
-    });
+    res.status(500).json({ error: "An error occurred while getting the messages", details: error.message });
   }
 };
 
-
+// Controller to get all direct messages in a conversation
 exports.getConversation = async (req, res, next) => {
   const { id: senderId } = req.user;
   const { receiverId } = req.params;
 
+  // Ensure the chatId is always the same regardless of who is the sender and receiver
   const [user1, user2] = [senderId, receiverId].sort();
 
   try {
-    const messageIds = await Message.lrange(
-      `direct:${user1}:${user2}:messages`,
-      0,
-      -1
+    // Fetch all messages in the conversation and return
+    const messageIds = await Message.lrange(`direct:${user1}:${user2}:messages`, 0, -1);
+    const messages = await Promise.all(
+      messageIds.map(async (messageId) => {
+        const message = await Message.hgetall(`directMessage:${messageId}`);
+        message.id = messageId;
+        return message;
+      })
     );
 
-    const messages = [];
-    for (let messageId of messageIds) {
-      const message = await Message.hgetall(`directMessage:${messageId}`);
-      message.id = messageId;
-      messages.push(message);
-    }
-
-    console.log(`Fetched conversation: ${JSON.stringify(messages)}`);
     res.status(200).json({ messages });
   } catch (error) {
     console.error("Get conversation error:", error);
-    res.status(500).json({
-      error: "An error occurred while getting the conversation",
-      details: error.message,
-    });
+    res.status(500).json({ error: "An error occurred while getting the conversation", details: error.message });
   }
 };
 
+// Controller to update the status of a message
 exports.updateMessageStatus = async (req, res, next) => {
   const { messageId, status } = req.body;
-  const { username: senderUsername } = req.user;
 
   try {
-    const message = await Message.hgetall(`directMessage:${messageId}`);
-
+    // Update the status of the message in Redis
     await Message.hset(`directMessage:${messageId}`, "status", status);
-    console.log(`Updated status of message ${messageId} to ${status}`);
 
-    const updatedMessage = {
-      id: messageId,
-      sender: message.sender,
-      chatId: message.chatId,
-      text: message.text,
-      timestamp: message.timestamp,
-      status
-    };
+    // Emit the 'updateMessageStatus' event to all clients
+    const message = await Message.hgetall(`directMessage:${messageId}`);
+    const updatedMessage = { id: messageId, sender: message.sender, chatId: message.chatId, text: message.text, timestamp: message.timestamp, status };
     req.io.emit("updateMessageStatus", updatedMessage);
+
     res.status(200).json({ message: "Message status updated successfully" });
   } catch (error) {
     console.error("Update message status error:", error);
-    res.status(500).json({
-      error: "An error occurred while updating the message status",
-      details: error.message,
-    });
+    res.status(500).json({ error: "An error occurred while updating the message status", details: error.message });
   }
 };
-
 
 
 ==============================
 
 -roomController.js
-// roomController.js
+// Import the Room model
 const Room = require('../models/Room');
 
-
+// Function to handle GET request for room members
 exports.getRoomMembers = async (req, res, next) => {
   const { roomId } = req.params;
 
   try {
+    // Fetch members from Redis store
     const members = await Room.client.smembers(`room:${roomId}:members`);
+    // Return members list in response
     res.status(200).json({ members });
   } catch (error) {
-    console.error('Get room members error:', error);
+    console.error('Error in fetching room members:', error);
     next(error);
   }
 };
 
+// Function to handle POST request for room creation
 exports.createRoom = async (req, res, next) => {
   const { name } = req.body;
 
   try {
+    // Call the createRoom method of the Room model
     const roomId = await Room.createRoom(name);
-    // Include a room object in the response
-    res.status(201).json({ 
-      message: 'Room created successfully', 
+    // Return a success message and room details in response
+    res.status(201).json({
+      message: 'Room created successfully',
       room: { id: roomId, name: name }
     });
   } catch (error) {
-    console.error('Create room error:', error);
+    console.error('Error in creating room:', error);
     next(error);
   }
 };
 
-
+// Function to handle PUT request for joining a room
 exports.joinRoom = async (req, res, next) => {
   const { roomId } = req.params;
   const { username } = req.user;
 
   try {
+    // Call the joinRoom method of the Room model
     await Room.joinRoom(roomId, username);
+    // Return a success message in response
     res.status(200).json({ message: 'Joined room successfully' });
   } catch (error) {
-    console.error('Join room error:', error);
+    console.error('Error in joining room:', error);
     next(error);
   }
 };
 
+// Function to handle PUT request for leaving a room
 exports.leaveRoom = async (req, res, next) => {
   const { roomId } = req.params;
   const { username } = req.user;
 
   try {
+    // Call the leaveRoom method of the Room model
     await Room.leaveRoom(roomId, username);
+    // Return a success message in response
     res.status(200).json({ message: 'Left room successfully' });
   } catch (error) {
-    console.error('Leave room error:', error);
+    console.error('Error in leaving room:', error);
     next(error);
   }
 };
 
+// Function to handle GET request for list of rooms
 exports.getRooms = async (req, res, next) => {
   try {
+    // Call the getRooms method of the Room model
     const rooms = await Room.getRooms();
+    // Return list of rooms in response
     res.status(200).json({ rooms });
   } catch (error) {
-    console.error('Get rooms error:', error);
+    console.error('Error in fetching rooms:', error);
     next(error);
   }
 };
 
+// Function to handle DELETE request for a room
 exports.deleteRoom = async (req, res, next) => {
   const { roomId } = req.params;
 
   try {
+    // Call the deleteRoom method of the Room model
     await Room.deleteRoom(roomId);
+    // Return a success message in response
     res.status(200).json({ message: 'Room deleted successfully' });
   } catch (error) {
-    console.error('Delete room error:', error);
+    console.error('Error in deleting room:', error);
     next(error);
   }
 };
 
+// Function to handle PUT request for editing a room
 exports.editRoom = async (req, res, next) => {
   const { roomId } = req.params;
   const { newName } = req.body;
 
   try {
+    // Call the editRoom method of the Room model
     await Room.editRoom(roomId, newName);
+    // Return a success message in response
     res.status(200).json({ message: 'Room edited successfully' });
   } catch (error) {
-    console.error('Edit room error:', error);
+    console.error('Error in editing room:', error);
     next(error);
   }
 };
-
 
 
 ==============================
@@ -651,8 +618,8 @@ exports.logout = async (req, res, next) => {
     res.clearCookie("token");
 
     // Emit logout event
-    const io = require('../io'); // Import io from your io.js file
-    io.emit('logout', req.user.username); // assuming req.user.username is available
+    const io = require("../io"); // Import io from your io.js file
+    io.emit("logout", req.user.username); // assuming req.user.username is available
 
     res.status(200).json({ message: "User logged out successfully" });
   } catch (error) {
@@ -778,123 +745,141 @@ module.exports = io;
 ==============================
 
 -auth.js
+// Import required modules
 const jwt = require('jsonwebtoken');
-const cookieParser = require('cookie-parser');
 const IORedis = require('ioredis');
 
+// Initialize a new Redis client
 const client = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
 });
 
+// Middleware function to authenticate the user
 exports.authenticate = async (req, res, next) => {
-  console.log('authenticate middleware called');  // Log that the middleware has been called
-
+  // Retrieve the token from the request cookies
   const token = req.cookies.token;
-  console.log('Incoming token:', token); // Add this line
-  
+
+  // If no token is provided, return an error
   if (!token) {
-    console.log('No token provided');  // Log that no token was provided
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  // Check if the token is invalidated
+  // Check if the token has been invalidated
   const isInvalidated = await client.sismember("invalidatedTokens", token);
+  
+  // If the token is invalidated, return an error
   if (isInvalidated) {
-    console.log('The token is invalidated');  // Log that the token was invalidated
     return res.status(401).json({ error: 'The token is invalidated' });
   }
 
-  // Check if the JWT_SECRET is defined
+  // If the JWT_SECRET environment variable is not defined, return an error
   if (!process.env.JWT_SECRET) {
-    console.log('Internal server error - JWT_SECRET not defined');  // Log that JWT_SECRET is not defined
     return res.status(500).json({ error: 'Internal server error' });
   }
 
   try {
-    console.log('Before jwt.verify');  // Add this line
+    // Verify the JWT token and extract the user information
     const user = jwt.verify(token, process.env.JWT_SECRET);
-    console.log(`Decoded user from JWT: ${JSON.stringify(user)}`);  // Add this line
-    console.log('After jwt.verify');  // Add this line
-    console.log('User:', user);  // Log the user object
+
+    // Assign the user object to the request object
     req.user = user;
+
+    // Continue to the next middleware function
     next();
-} catch (error) {
-    console.log('jwt.verify error:', error.message);
+  } catch (error) {
+    // If the JWT verification fails, return an error
     return res.status(401).json({ error: 'Invalid token' });
-}
-
-
-
+  }
 };
 
 
 ==============================
 
 -errorHandler.js
+/**
+ * A middleware function to handle errors that occur in the application.
+ * It logs the error and sends a response with status 500 and the error message.
+ * 
+ * @param {Error} err - The error object
+ * @param {Request} req - The Express request object
+ * @param {Response} res - The Express response object
+ * @param {Function} next - The next middleware function in the Express pipeline
+ */
 exports.errorHandler = (err, req, res, next) => {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  };
-  
+  // Log the error to the console for debugging purposes
+  console.error(err);
+
+  // Respond to the client with a 500 status code and the error message
+  res.status(500).json({ error: err.message });
+};
+
 
 ==============================
 
 -Message.js
+// Import the ioredis library
 const IORedis = require("ioredis");
 
+// Create a new Redis client
 const messageClient = new IORedis({
+  // Provide Redis server host, port, and password from environment variables
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
+  
+  // Setup a retry strategy for reconnecting to the Redis server if the connection is lost
+  // The delay for each retry attempt increases linearly (times * 50) but is capped at 2000 milliseconds
   retryStrategy: function (times) {
     const delay = Math.min(times * 50, 2000);
     return delay;
   },
 });
 
+// Set up an error event listener on the Redis client to log any errors
 messageClient.on("error", (err) => {
   console.log("Error", err);
 });
 
-// Message data structure
-// id (IORedis will generate this id)
-// sender
-// text
-// timestamp
+// The data structure for messages stored in Redis includes the following fields:
+// id - Automatically generated by Redis
+// sender - The sender of the message
+// text - The content of the message
+// timestamp - The time when the message was sent
 
+// Export the Redis client for use in other parts of the application
 module.exports = messageClient;
 
 
 ==============================
 
 -Room.js
-// Room.js
+// Import the IORedis library
 const IORedis = require('ioredis');
+
+// Initialize a new Redis client
+// The 'retryStrategy' option is a function that's called when the client loses the connection to the Redis server
+// It returns the delay amount in milliseconds to use before reconnecting. If no value is returned, the client will stop trying to reconnect
 const client = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
-  retryStrategy: function(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
+  retryStrategy: times => Math.min(times * 50, 2000),
 });
 
+// Event listener for successful connection to the Redis server
 client.on('connect', () => {
   console.log('Redis client connected');
 });
 
-client.on('error', (err) => {
+// Event listener for connection errors with the Redis server
+client.on('error', err => {
   console.log('Error', err);
 });
 
-// Room data structure
-// id (IORedis will generate this id)
-// name
-// members
-
+// Functions that manipulate the 'Room' data in Redis
+// Create a new room with a specified name
 async function createRoom(name) {
   const roomId = await client.incr('room:id');
   await client.hset(`room:${roomId}`, 'name', name);
@@ -902,35 +887,43 @@ async function createRoom(name) {
   return roomId;
 }
 
+// Add a user to a specified room
 async function joinRoom(roomId, username) {
   await client.sadd(`room:${roomId}:members`, username);
 }
 
+// Remove a user from a specified room
 async function leaveRoom(roomId, username) {
   await client.srem(`room:${roomId}:members`, username);
 }
 
+// Retrieve all rooms
 async function getRooms() {
   const roomIds = await client.smembers('rooms');
   const rooms = [];
+
+  // Iterate over each room and fetch the room details and its members
   for (let roomId of roomIds) {
     const room = await client.hgetall(`room:${roomId}`);
     room.members = await client.smembers(`room:${roomId}:members`);
-    room.id = roomId; // Add this line
+    room.id = roomId;
     rooms.push(room);
   }
   return rooms;
 }
 
+// Delete a specified room
 async function deleteRoom(roomId) {
   await client.del(`room:${roomId}`);
   await client.srem('rooms', roomId);
 }
 
+// Rename a specified room
 async function editRoom(roomId, newName) {
   await client.hset(`room:${roomId}`, 'name', newName);
 }
 
+// Export the functions for use in other files
 module.exports = {
   createRoom,
   joinRoom,
@@ -941,61 +934,63 @@ module.exports = {
   client,
 };
 
+
 ==============================
 
 -User.js
-console.log("REDIS_HOST:", process.env.REDIS_HOST);
-console.log("REDIS_PORT:", process.env.REDIS_PORT);
-console.log("REDIS_PASSWORD:", process.env.REDIS_PASSWORD);
-
+// Required packages
 const IORedis = require("ioredis");
 const bcrypt = require("bcrypt");
 
-console.log("About to create Redis client");
-
-// Create Redis client
+// Create a Redis client
+// The `retryStrategy` function is used to control how often and when to retry connecting.
+// The delay between retries is calculated as a minimum of the retry attempt times 50 and 2000 milliseconds.
 const redisClient = new IORedis({
   host: process.env.REDIS_HOST,
   port: process.env.REDIS_PORT,
   password: process.env.REDIS_PASSWORD,
   retryStrategy: function (times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
+    return Math.min(times * 50, 2000);
   },
 });
 
-console.log("Redis client created");
-
+// Event listeners for the Redis client.
+// On 'connect', the client will log a success message.
 redisClient.on("connect", () => {
-  console.log("Redis client connected");
+  console.log("Successfully connected to Redis");
 });
 
+// On 'error', the client will log the error.
 redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
-console.log("Successfully connected to Redis");
-
-// Redis functions
-async function addUser(username, password) {
-  const hashedPassword = await hashPassword(password);
-  await redisClient.hset(`user:${username}`, "password", hashedPassword);
-}
-
+// A helper function to hash a password using bcrypt.
 async function hashPassword(password) {
   const salt = await bcrypt.genSalt(10);
   return await bcrypt.hash(password, salt);
 }
 
+// A function to add a new user to the Redis store.
+// The user's password is hashed before being stored.
+async function addUser(username, password) {
+  const hashedPassword = await hashPassword(password);
+  await redisClient.hset(`user:${username}`, "password", hashedPassword);
+}
+
+// A function to verify if a user exists in the Redis store.
+// It checks if the 'password' field of the user exists.
 async function verifyUser(username) {
   const password = await redisClient.hget(`user:${username}`, 'password');
   return password !== null;
 }
 
+// A function to retrieve a user's data from the Redis store.
 async function getUser(username) {
   return await redisClient.hgetall(`user:${username}`);
 }
 
+// Expose the Redis client and helper functions as a module.
 module.exports = {
   addUser,
   verifyUser,
@@ -1007,52 +1002,67 @@ module.exports = {
 ==============================
 
 -node.js
+// Require the dotenv module to load environment variables from a .env file into process.env
 require("dotenv").config();
+
+// Import the ioredis module for Redis connection
 const Redis = require("ioredis");
 
-console.log("REDIS_HOST:", process.env.REDIS_HOST);
-console.log("REDIS_PORT:", process.env.REDIS_PORT);
-console.log("REDIS_PASSWORD:", process.env.REDIS_PASSWORD);
-
+// Initialize the Redis client with configuration from environment variables
 const redis = new Redis({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT,
-  password: process.env.REDIS_PASSWORD,
+  host: process.env.REDIS_HOST,  // The host of the Redis server
+  port: process.env.REDIS_PORT,  // The port of the Redis server
+  password: process.env.REDIS_PASSWORD,  // The password for the Redis server
 });
 
+// Set up an event listener for successful Redis connection
 redis.on("connect", () => {
   console.log("Redis client connected");
 });
 
+// Set up an event listener for Redis connection error
 redis.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
 // Keep the script running until manually stopped
+// This is done by setting an interval that does nothing but keeps the event loop busy
 setInterval(() => {}, 1000);
 
 
 ==============================
 
 -chatRoutes.js
+// Importing required modules
 const express = require("express");
 const router = express.Router();
 const chatController = require("../controllers/chatController");
 const { authenticate } = require("../middleware/auth");
 const rateLimit = require("express-rate-limit");
 
+// Setting up rate limiting to prevent abuse. Each IP is limited to 3 requests every 15 minutes
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // limit each IP to 3 requests per windowMs
-  message:
-    "Too many messages created from this IP, please try again after an hour",
+  max: 3, 
+  message: "Too many messages created from this IP, please try again after an hour",
 });
 
+// Route for sending a message in a chat room. Authentication and rate limiting middleware are applied
 router.post("/send", authenticate, apiLimiter, chatController.sendMessage);
-router.post("/sendDirect", authenticate, apiLimiter, chatController.sendDirectMessage); // New route for direct messages
+
+// Route for sending a direct message. Authentication and rate limiting middleware are applied
+router.post("/sendDirect", authenticate, apiLimiter, chatController.sendDirectMessage);
+
+// Route for fetching messages from a room. Authentication middleware is applied
 router.get("/messages/:roomId", authenticate, chatController.getMessages);
-router.get("/privateMessages/:chatId", authenticate, chatController.getPrivateMessages); // Modified route
+
+// Route for fetching private messages from a chat. Authentication middleware is applied
+router.get("/privateMessages/:chatId", authenticate, chatController.getPrivateMessages);
+
+// Route for fetching a conversation with a specific receiver. Authentication middleware is applied
 router.get('/conversation/:receiverId', authenticate, chatController.getConversation);
+
+// Route for fetching the last read message in a chat. The route is asynchronous as it involves fetching data from Redis
 router.get('/lastReadMessage/:userId/:chatId', async (req, res, next) => {
   const { userId, chatId } = req.params;
   const readMessagesKey = `readMessages:${userId}:${chatId}`;
@@ -1060,62 +1070,97 @@ router.get('/lastReadMessage/:userId/:chatId', async (req, res, next) => {
   res.json(lastReadMessageId || null);
 });
 
-
+// Exporting the router to be used in other modules
 module.exports = router;
 
 
 ==============================
 
 -roomRoutes.js
-// roomRoutes.js
+// Import necessary modules
 const express = require('express');
-const router = express.Router();
 const roomController = require('../controllers/roomController');
 const { authenticate } = require('../middleware/auth');
 
+// Initialize Express router
+const router = express.Router();
+
+// Define endpoint for creating a new room
+// This route requires authentication
 router.post('/create', authenticate, roomController.createRoom);
+
+// Define endpoint for joining a room by ID
+// This route requires authentication
 router.post('/join/:roomId', authenticate, roomController.joinRoom);
+
+// Define endpoint for leaving a room by ID
+// This route requires authentication
 router.post('/leave/:roomId', authenticate, roomController.leaveRoom);
+
+// Define endpoint for getting all rooms
+// This route requires authentication
 router.get('/', authenticate, roomController.getRooms);
+
+// Define endpoint for deleting a room by ID
+// This route requires authentication
 router.delete('/:roomId', authenticate, roomController.deleteRoom);
+
+// Define endpoint for editing a room by ID
+// This route requires authentication
 router.put('/:roomId', authenticate, roomController.editRoom);
+
+// Define endpoint for getting all members of a room by ID
+// This route requires authentication
 router.get('/:roomId/members', authenticate, roomController.getRoomMembers);
 
-
-
-
+// Export the router to be used in other parts of the application
 module.exports = router;
 
 
 ==============================
 
 -userRoutes.js
+// Import the required modules
 const express = require('express');
-const router = express.Router();
 const userController = require('../controllers/userController');
-const auth = require('../middleware/auth'); // Don't forget to import the auth middleware
+const auth = require('../middleware/auth');
 
+// Initialize a router instance
+const router = express.Router();
+
+// Define the route for user registration. This route is handled by the register function in the userController.
 router.post('/register', userController.register);
-router.post('/login', userController.login);
-router.post('/logout', auth.authenticate, userController.logout); // Add auth.authenticate before userController.logout
 
+// Define the route for user login. This route is handled by the login function in the userController.
+router.post('/login', userController.login);
+
+// Define the route for user logout. This route is protected by the authentication middleware, so only logged-in users can access it.
+// The auth.authenticate middleware function is called before the logout function in the userController. If the user is not authenticated, they will not be able to logout.
+router.post('/logout', auth.authenticate, userController.logout);
+
+// Export the router instance, which will be used in other parts of the application to handle user-related routes.
 module.exports = router;
 
 
 ==============================
 
 -server.js
+// Import necessary dependencies
 require("dotenv").config();
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require('cookie-parser');
+
+// Import routes
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const roomRoutes = require("./routes/roomRoutes");
-const { errorHandler } = require("./middleware/errorHandler");
-const User = require("./models/User");
 
+// Import middleware
+const { errorHandler } = require("./middleware/errorHandler");
+
+// Process-level error handlers
 process.on('unhandledRejection', (reason, promise) => {
   console.log('Unhandled Rejection at:', promise, 'reason:', reason);
 });
@@ -1124,6 +1169,7 @@ process.on('uncaughtException', (err, origin) => {
   console.log('Caught exception:', err, 'Exception origin:', origin);
 });
 
+// CORS configuration
 const corsOptions = {
   origin: 'http://localhost:3000',
   credentials: true,
@@ -1132,39 +1178,40 @@ const corsOptions = {
 // Create Express app
 const app = express();
 
-// Add logging middleware
+// Middleware for logging incoming requests
 app.use((req, res, next) => {
   console.log(`Request received: ${req.method} ${req.path}`);
   next();
 });
 
-// Add Socket.IO instance to the request object
+// Create server with Socket.IO and CORS configuration
 const server = http.createServer(app);
 const io = require("./config/socket")(server, corsOptions);
 
-app.use(cors(corsOptions));
-app.use(express.json());
-app.use(cookieParser());
+// Express middleware configuration
+app.use(cors(corsOptions));  // Enable CORS with the given options
+app.use(express.json());  // Enable JSON request body parsing
+app.use(cookieParser());  // Enable cookie parsing
 
-
-
-// Add Socket.IO instance to the request object
+// Middleware to attach Socket.IO instance to the request object
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
 
-// Routes
-app.use("/api/users", userRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/rooms", roomRoutes);
+// Routing
+app.use("/api/users", userRoutes);  // User-related routes
+app.use("/api/chat", chatRoutes);  // Chat-related routes
+app.use("/api/rooms", roomRoutes);  // Room-related routes
 
 // Error handling middleware
 app.use(errorHandler);
 
+// Start the server
 server.listen(process.env.PORT || 5000, () => {
   console.log(`Server running on port ${process.env.PORT || 5000}`);
 });
+
 
 ==============================
 
@@ -1206,7 +1253,7 @@ import ProtectedChatRoom from "./components/ProtectedChatRoom";
 import LogoutButton from "./components/LogoutButton";
 import PrivateChat from "./components/PrivateChat";
 import { RoomsProvider } from './contexts/RoomsContext';
-
+import "./App.css";
 
 const MainApp = () => {
   const { user } = useContext(AuthContext);
@@ -1253,7 +1300,6 @@ const MainApp = () => {
           <Route path="/register" element={<RegisterForm />} />
           {user && (
             <>
-              <Route path="/rooms/:roomId" element={<ProtectedChatRoom />} />
               <Route path="/private/:chatId" element={<PrivateChat user={user} />} />
 
               <Route
@@ -1276,7 +1322,6 @@ const MainApp = () => {
 
 export default MainApp;
 
-
 ==============================
 
 -App.test.js
@@ -1293,94 +1338,93 @@ test('renders learn react link', () => {
 ==============================
 
 -ChatRoom.js
+// Required Libraries
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
-import '../App.css';
+import "../App.css";
 
 let socket;
+
+// ChatRoom component
 const ChatRoom = ({ user, roomId, roomName, members = [], setMembers }) => {
+
+  // Initializing states
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [onlineUsers, setOnlineUsers] = useState({});
   const messagesEndRef = useRef(null);
-  
 
+  // Function for smooth scrolling to the bottom of the chat
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Scroll to bottom whenever messages update
   useEffect(scrollToBottom, [messages]);
 
+  // When roomId or username changes, create a new socket connection and fetch initial messages and members
   useEffect(() => {
+
+    // Initialize socket connection
     socket = io("http://localhost:5000");
 
+    // On connection, join the room with username
     socket.on("connect", () => {
       socket.emit("joinRoom", roomId, user.username);
     });
 
+    // Fetch all messages for the room
     const fetchMessages = async () => {
       if (roomId) {
         try {
-          const res = await axios.get(
-            `http://localhost:5000/api/chat/messages/${roomId}`,
-            { withCredentials: true }
-          );
-          setMessages(
-            res.data.messages
-              .map((message) => {
-                return {
-                  ...message,
-                  isUserSender: message.sender === user.username,
-                  alignment: message.sender === user.username ? "align-right" : "align-left",
-                  name: message.sender,
-                  time: new Date(message.timestamp).toLocaleTimeString(),
-                  id: message._id,
-                  meOrNot: message.sender === user.username ? "me" : "not-me",
-                  otherOrMy: message.sender === user.username ? "my" : "other",
-                };
-              })
-              .reverse()
-          );
+          const res = await axios.get(`http://localhost:5000/api/chat/messages/${roomId}`, { withCredentials: true });
+          setMessages(res.data.messages.map((message) => {
+            return {
+              ...message,
+              isUserSender: message.sender === user.username,
+              alignment: message.sender === user.username ? "align-right" : "align-left",
+              name: message.sender,
+              time: new Date(message.timestamp).toLocaleTimeString(),
+              id: message._id,
+              meOrNot: message.sender === user.username ? "me" : "not-me",
+              otherOrMy: message.sender === user.username ? "my" : "other",
+            };
+          }).reverse());
         } catch (err) {
           console.error(err);
         }
       }
     };
 
-// Use setMembers from props
-const fetchRoomMembers = async () => {
-  if (roomId) {
-    try {
-      const res = await axios.get(
-        `http://localhost:5000/api/rooms/${roomId}/members`,
-        { withCredentials: true }
-      );
-      setMembers(res.data.members);  // use setMembers from props
-    } catch (err) {
-      console.error(err);
-    }
-  }
-};
+    // Fetch all members for the room
+    const fetchRoomMembers = async () => {
+      if (roomId) {
+        try {
+          const res = await axios.get(`http://localhost:5000/api/rooms/${roomId}/members`, { withCredentials: true });
+          setMembers(res.data.members);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
 
-
+    // Fetch initial data
     fetchMessages();
     fetchRoomMembers();
 
+    // Socket events handlers
     socket.on("receiveMessage", (message) => {
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          ...message,
-          isUserSender: message.sender === user.username,
-          alignment: message.sender === user.username ? "align-right" : "align-left",
-          name: message.sender,
-          time: new Date(message.timestamp).toLocaleTimeString(),
-          id: message._id,
-          meOrNot: message.sender === user.username ? "me" : "not-me",
-          otherOrMy: message.sender === user.username ? "my" : "other",
-        },
-      ]);
+      setMessages((prevMessages) => [...prevMessages, {
+        ...message,
+        isUserSender: message.sender === user.username,
+        alignment: message.sender === user.username ? "align-right" : "align-left",
+        name: message.sender,
+        time: new Date(message.timestamp).toLocaleTimeString(),
+        id: message._id,
+        meOrNot: message.sender === user.username ? "me" : "not-me",
+        otherOrMy: message.sender === user.username ? "my" : "other",
+      }]);
     });
 
     socket.on("userOnline", (username) => {
@@ -1391,6 +1435,7 @@ const fetchRoomMembers = async () => {
       setOnlineUsers((prevUsers) => ({ ...prevUsers, [username]: false }));
     });
 
+    // Cleanup function when the component unmounts or roomId/username changes
     return () => {
       socket.off("receiveMessage");
       socket.off("userOnline");
@@ -1398,6 +1443,7 @@ const fetchRoomMembers = async () => {
     };
   }, [roomId, user.username]);
 
+  // Function to send a message
   const sendMessage = async (e) => {
     e.preventDefault();
 
@@ -1419,28 +1465,27 @@ const fetchRoomMembers = async () => {
     }
   };
 
+  // Handlers for input change and keydown events
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       if (!e.shiftKey) {
         sendMessage(e);
       }
     }
-  }
+  };
 
+  // Rendering chat component
   return (
     <div className="chat">
       <div className="chat-header clearfix">
-
-
-      <div className="chat-about">
-  <div className="chat-with">Room: {roomName}</div>
-</div>
-
+        <div className="chat-about">
+          <div className="chat-with">Room: {roomName}</div>
+        </div>
       </div>
 
       <div className="chat-history">
@@ -1448,7 +1493,10 @@ const fetchRoomMembers = async () => {
           {messages.map((message) => (
             <li className="clearfix" key={message.id}>
               <div className={`message-data ${message.alignment}`}>
-              <span className="message-data-name">{message.isUserSender ? 'You' : message.sender}</span>                <i className={`fa fa-circle ${message.meOrNot}`}></i>
+                <span className="message-data-name">
+                  {message.isUserSender ? "You" : message.sender}
+                </span>{" "}
+                <i className={`fa fa-circle ${message.meOrNot}`}></i>
               </div>
               <div className={`message ${message.otherOrMy}-message float-right`}>
                 {message.text}
@@ -1482,42 +1530,54 @@ export default ChatRoom;
 ==============================
 
 -CreateRoom.js
-// CreateRoom.js
-
+// Importing required modules and context
 import React, { useContext, useState } from 'react';
 import axios from 'axios';
-import { RoomsContext } from '../contexts/RoomsContext'; 
+import { RoomsContext } from '../contexts/RoomsContext';
 
 const CreateRoom = () => {
+  // Using React's useState hook to manage roomName state
   const [roomName, setRoomName] = useState('');
+  
+  // Using React's useContext hook to access RoomsContext
   const { setRooms } = useContext(RoomsContext);
 
+  // Defining a function to handle form submission
   const handleSubmit = async (event) => {
+    // Preventing the default action of form submission
     event.preventDefault();
 
     try {
+      // Making a POST request to the server to create a new room
       const response = await axios.post('http://localhost:5000/api/rooms/create', 
-        { name: roomName },
-        { withCredentials: true }
+        { name: roomName }, // Sending roomName as part of the request body
+        { withCredentials: true } // Sending cookies along with the request
       );
+
+      // Logging the response data
       console.log(response.data);
 
-      // Fetch rooms again after creating a new room
+      // Fetching rooms again after creating a new room
       const roomsResponse = await axios.get('http://localhost:5000/api/rooms', { withCredentials: true });
+      
+      // Updating the rooms state
       setRooms(roomsResponse.data.rooms);
 
+      // Clearing the roomName input field after successful creation
       setRoomName('');
     } catch (error) {
+      // Logging the error in case room creation fails
       console.error('Failed to create room:', error);
     }
   };
 
+  // Rendering the form
   return (
     <form onSubmit={handleSubmit}>
       <input
         type="text"
         value={roomName}
-        onChange={(event) => setRoomName(event.target.value)}
+        onChange={(event) => setRoomName(event.target.value)} // Updating roomName state every time the input field changes
         placeholder="Room name"
         required
       />
@@ -1526,6 +1586,7 @@ const CreateRoom = () => {
   );
 };
 
+// Exporting CreateRoom component
 export default CreateRoom;
 
 
@@ -1550,31 +1611,42 @@ export default Home;
 ==============================
 
 -LoginForm.js
-// LoginForm.js
-import React, { useState, useContext } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../contexts/AuthContext';
+// Import the necessary modules.
+import React, { useState, useContext } from 'react';  // React and its hooks.
+import axios from 'axios';  // Axios to make HTTP requests.
+import { useNavigate } from 'react-router-dom';  // Navigation hook from react-router.
+import { AuthContext } from '../contexts/AuthContext';  // Auth context to handle authentication.
 
+// LoginForm component definition.
 const LoginForm = () => {
+  // State variables for username and password.
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+
+  // Fetch login function from auth context.
   const { login } = useContext(AuthContext);
+
+  // Fetch navigate function from router.
   const navigate = useNavigate();
 
+  // Form submission handler.
   const handleSubmit = async (e) => {
+    // Prevent default form submission behavior.
     e.preventDefault();
 
     try {
+      // Make a POST request to the login API endpoint with the username and password.
       const response = await axios.post(
         'http://localhost:5000/api/users/login',
         { username, password },
         { withCredentials: true }
       );
 
+      // If successful, call the login function from the auth context with the returned username and navigate to the rooms route.
       login(response.data.username);
       navigate('/rooms');
     } catch (error) {
+      // Log any errors to the console.
       console.error(error);
     }
   };
@@ -1586,6 +1658,7 @@ const LoginForm = () => {
         <input
           type="text"
           value={username}
+          // Update the username state variable on change.
           onChange={(e) => setUsername(e.target.value)}
         />
       </label>
@@ -1594,6 +1667,7 @@ const LoginForm = () => {
         <input
           type="password"
           value={password}
+          // Update the password state variable on change.
           onChange={(e) => setPassword(e.target.value)}
         />
       </label>
@@ -1608,32 +1682,47 @@ export default LoginForm;
 ==============================
 
 -LogoutButton.js
-// LogoutButton.js
+// Importing necessary libraries and hooks
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { AuthContext } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';  // React Router's hook for navigation
+import axios from 'axios';  // HTTP client for the browser and node.js
+import { AuthContext } from '../contexts/AuthContext';  // Context for Auth
 
+// The LogoutButton component
 function LogoutButton() {
+  // useNavigate hook for navigation
   const navigate = useNavigate();
+
+  // useContext hook to access the AuthContext
   const { logout, user } = React.useContext(AuthContext);
 
+  // Function for handling the logout
   const handleLogout = async () => {
     try {
-      await axios.post('http://localhost:5000/api/users/logout', {}, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        withCredentials: true
-      });
+      // Making a POST request to the logout API
+      await axios.post(
+        'http://localhost:5000/api/users/logout',
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}` // Access token for authentication
+          },
+          withCredentials: true // Enables automatic sending of cookies
+        }
+      );
   
+      // Calling the logout method from AuthContext
       logout();
+
+      // Navigating to the login page after successful logout
       navigate('/login');
     } catch (error) {
+      // Logging any error occurred during the process
       console.error('Failed to log out', error);
     }
   };
   
+  // Rendering the Logout button
   return (
     <button onClick={handleLogout}>Logout</button>
   );
@@ -1651,50 +1740,55 @@ import io from "socket.io-client";
 import { useParams } from "react-router-dom";
 import '../App.css';
 
+// Create a socket instance
 let socket;
 
+// PrivateChat component definition
 const PrivateChat = ({ user }) => {
+  // State for storing messages and the input value for sending messages
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
+
+  // Extract the chatId parameter from the URL
   const { chatId: encodedChatId } = useParams();
   const chatId = decodeURIComponent(encodedChatId);
+
+  // Create refs for the input and chat container elements
   const inputRef = useRef(null);
   const chatContainerRef = useRef(null);
-  console.log("PrivateChat chatId:", chatId); // Add this line
 
-
+  // Effect to scroll to the bottom of the chat container when new messages are received
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
-
+  // Effect to initialize the socket connection and fetch existing messages
   useEffect(() => {
+    // Initialize socket connection
     socket = io("http://localhost:5000");
 
+    // Handle socket connection and login event
     socket.on("connect", () => {
       console.log(`Socket connected with ID: ${socket.id}`);
       socket.emit("login", user.id);
     });
 
+    // Function to fetch existing private messages for the chat
     const fetchMessages = async () => {
       try {
         console.log(`Fetching messages for chatId: ${chatId}`);
-        const receiverUsername = chatId
-          .split("-")
-          .find((username) => username !== user.username);
-        const messageChatId = [user.username, receiverUsername]
-          .sort()
-          .join("-");
+        const receiverUsername = chatId.split("-").find((username) => username !== user.username);
+        const messageChatId = [user.username, receiverUsername].sort().join("-");
 
-        // Fetch messages
+        // Fetch messages from the server
         const res = await axios.get(
           `http://localhost:5000/api/chat/privateMessages/${messageChatId}`,
           { withCredentials: true }
         );
 
-        // Adding the isUserSender property to each message and reverse the order
+        // Add the isUserSender property to each message and reverse the order for displaying
         setMessages(
           res.data.messages
             .map((message) => {
@@ -1710,8 +1804,10 @@ const PrivateChat = ({ user }) => {
       }
     };
 
+    // Fetch existing messages for the chat
     fetchMessages();
 
+    // Listen for new private messages from the server
     socket.on("privateMessage", (message) => {
       console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
       if (message.chatId === chatId) {
@@ -1725,30 +1821,13 @@ const PrivateChat = ({ user }) => {
             },
           ];
         });
-      }
-    });
-
-    // Listen for status updates from the server
-    socket.on("privateMessage", (message) => {
-      console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
-      if (message.chatId === chatId) {
-        setMessages((prevMessages) => {
-          return [
-            ...prevMessages,
-            {
-              ...message,
-              isUserSender: message.sender === user.username,
-              status: "delivered",
-            },
-          ];
-        });
-    
-        // Scroll to bottom after receiving a new message
+        
+        // Scroll to the bottom after receiving a new message
         chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
     });
-    
 
+    // Cleanup function to remove socket listeners and close the socket connection
     return () => {
       socket.off("privateMessage");
       socket.off("updateMessageStatus");
@@ -1757,14 +1836,15 @@ const PrivateChat = ({ user }) => {
     };
   }, [chatId, user]);
 
-  
-
+  // Function to send a private message
   const sendMessage = async (e) => {
     e.preventDefault();
 
+    // Get the receiver's username and create the chatId for the message
     const receiverUsername = chatId.split("-").find((username) => username !== user.username);
     const messageChatId = [user.username, receiverUsername].sort().join("-");
 
+    // Create the message object
     const message = {
       text: inputValue,
       chatId: messageChatId,
@@ -1775,15 +1855,19 @@ const PrivateChat = ({ user }) => {
       status: "sent",
     };
 
+    // Emit the "sendPrivateMessage" event with the message data
     socket.emit("sendPrivateMessage", message);
 
+    // Clear the input field after sending the message
     setInputValue("");
   };
 
+  // Function to handle changes in the input field
   const handleInputChange = (e) => {
     setInputValue(e.target.value);
   };
 
+  // JSX to render the PrivateChat component
   return (
     <div className="chat">
       <div className="chat-header clearfix">
@@ -1801,7 +1885,6 @@ const PrivateChat = ({ user }) => {
           {messages.map((message, index) => (
             <li className="clearfix" key={index}>
               <div className={`message-data ${message.isUserSender ? 'align-right' : 'align-left'}`}>
-
                 <span className="message-data-name">{message.isUserSender ? "You" : message.sender}</span>
                 <span className="message-data-status">
                   Status: {message.status || 'sent'}
@@ -1818,20 +1901,20 @@ const PrivateChat = ({ user }) => {
   
       <div className="chat-message clearfix">
         <form onSubmit={sendMessage}>
-        <textarea
-  name="message-to-send"
-  id="message-to-send"
-  placeholder="Type your message"
-  rows="3"
-  value={inputValue}
-  onChange={handleInputChange}
-  onKeyPress={(e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(e);
-    }
-  }}
-></textarea>
+          <textarea
+            name="message-to-send"
+            id="message-to-send"
+            placeholder="Type your message"
+            rows="3"
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(e);
+              }
+            }}
+          ></textarea>
 
           <i className="fa fa-file-o"></i> &nbsp;&nbsp;&nbsp;
           <i className="fa fa-file-image-o"></i>
@@ -1844,46 +1927,57 @@ const PrivateChat = ({ user }) => {
 
 export default PrivateChat;
 
+
 ==============================
 
 -ProtectedChatRoom.js
 // ProtectedChatRoom.js
 import React from 'react';
-import { Navigate, useParams } from 'react-router-dom';  // Import useParams
-import UseAuth from '../hooks/UseAuth';
-import ChatRoom from './ChatRoom';
+import { Navigate, useParams } from 'react-router-dom';  // Import the required modules
+import UseAuth from '../hooks/UseAuth';  // Import the custom hook
+import ChatRoom from './ChatRoom';  // Import the ChatRoom component
 
 const ProtectedChatRoom = () => {
-  const { user } = UseAuth();  // Get the user from the Auth context
-  const { roomId } = useParams();  // Get roomId from URL parameters
+  const { user } = UseAuth();  // Get the user from the Auth context using the custom hook
+  const { roomId } = useParams();  // Get the roomId from URL parameters using React Router's useParams hook
 
-  // If there is no user logged in, redirect to login
+  // If there is no user logged in, redirect to the login page
   if (!user) {
     return <Navigate to="/login" />;
   }
 
-  // If a user is logged in, render the ChatRoom
-  return <ChatRoom user={user} roomId={roomId} />;  // Pass user and roomId as props
+  // If a user is logged in, render the ChatRoom component passing user and roomId as props
+  return <ChatRoom user={user} roomId={roomId} />;
 };
 
 export default ProtectedChatRoom;
 
+
 ==============================
 
 -ProtectedRoute.js
+// Import necessary libraries and modules
 import React from 'react';
 import { Route, useNavigate } from 'react-router-dom';
 import UseAuth from '../hooks/UseAuth';
 
+// Define the ProtectedRoute component
 const ProtectedRoute = ({ component: Component, ...rest }) => {
+  // Get the authenticated user from the UseAuth hook
   const { user } = UseAuth();
+  // Get the navigate function from react-router-dom
   const navigate = useNavigate();
 
+  // Render the Route with custom element based on user authentication
   return (
     <Route
       {...rest}
       element={
-        user ? <Component /> : (navigate('/login'), null)
+        // If the user is authenticated, render the component
+        user ? <Component /> : (
+          // If the user is not authenticated, navigate to '/login' and render nothing (null)
+          navigate('/login'), null
+        )
       }
     />
   );
@@ -1891,30 +1985,38 @@ const ProtectedRoute = ({ component: Component, ...rest }) => {
 
 export default ProtectedRoute;
 
+
 ==============================
 
 -RegisterForm.js
+// Importing necessary libraries
 import React, { useState } from 'react';
 import axios from 'axios';
 
+// Defining the RegisterForm component
 function RegisterForm() {
+  // State variables for username and password
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
+  // Function to handle form submission
   const handleSubmit = async (event) => {
-    event.preventDefault();
-  
+    event.preventDefault(); // Prevent the default form submission behavior
+
     try {
+      // Sending a POST request to the server to register the user
       await axios.post('http://localhost:5000/api/users/register', { username, password }, {
-        withCredentials: true
+        withCredentials: true // Include credentials (like cookies) with the request
       });
-      alert('Registered successfully');
+      alert('Registered successfully'); // Show an alert when registration is successful
     } catch (error) {
+      // If there's an error, log the error response data to the console
       console.error('Failed to register', error.response.data);
     }
   };
 
   return (
+    // Form for user registration, with event handler for form submission
     <form onSubmit={handleSubmit}>
       <label>
         Username:
@@ -1924,13 +2026,13 @@ function RegisterForm() {
         Password:
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <button type="submit">Register</button>
+      <button type="submit">Register</button> {/* Submit button for form submission */}
     </form>
   );
 }
 
+export default RegisterForm; // Exporting the RegisterForm component for use in other files
 
-export default RegisterForm;
 
 ==============================
 
@@ -1946,11 +2048,12 @@ import { ReactComponent as DeleteIcon } from "./media/delete.svg";
 import { ReactComponent as LeaveIcon } from "./media/leave.svg";
 import { ReactComponent as CorrectIcon } from "./media/correct.svg";
 import ChatRoom from "./ChatRoom";
-import PrivateChat from "./PrivateChat";
 
 const RoomList = () => {
+  // Get the rooms data from the RoomsContext
   const { rooms, setRooms } = useContext(RoomsContext);
 
+  // Initialize hooks and states
   const navigate = useNavigate();
   const { user } = UseAuth();
   const [selectedRoomMembers, setSelectedRoomMembers] = useState([]);
@@ -1958,18 +2061,18 @@ const RoomList = () => {
   const [chatRoomMembers, setChatRoomMembers] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [members, setMembers] = useState([]);
-  const [selectedPrivateChatId, setSelectedPrivateChatId] = useState(null);
 
+  // Fetch the list of rooms from the server on component mount
   useEffect(() => {
     if (!user) {
-      navigate("/login");
+      navigate("/login"); // Redirect to login page if user is not logged in
     } else {
       const fetchRooms = async () => {
         try {
           const res = await axios.get("http://localhost:5000/api/rooms", {
-            withCredentials: true,
+            withCredentials: true, // Send credentials along with the request
           });
-          setRooms(res.data.rooms);
+          setRooms(res.data.rooms); // Update the state with fetched rooms data
         } catch (err) {
           console.error(err);
         }
@@ -1979,28 +2082,30 @@ const RoomList = () => {
     }
   }, [user, navigate]);
 
+  // Function to delete a room by its ID
   const deleteRoom = async (roomId) => {
     try {
       await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
-        withCredentials: true,
+        withCredentials: true, // Send credentials along with the request
       });
       const res = await axios.get("http://localhost:5000/api/rooms", {
-        withCredentials: true,
+        withCredentials: true, // Send credentials along with the request
       });
-      setRooms(res.data.rooms);
+      setRooms(res.data.rooms); // Update the state with updated rooms data after deletion
     } catch (err) {
       console.error(err);
     }
   };
 
+  // Function to join a room by its ID
   const joinRoom = async (roomId) => {
     try {
       await axios.post(
         `http://localhost:5000/api/rooms/join/${roomId}`,
         {},
-        { withCredentials: true }
+        { withCredentials: true } // Send credentials along with the request
       );
-      // Update the rooms state
+      // Update the rooms state by adding the current user to the joined room's members list
       setRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === roomId) {
@@ -2018,22 +2123,21 @@ const RoomList = () => {
     }
   };
 
+  // Function to leave a room by its ID
   const leaveRoom = async (roomId) => {
     try {
       await axios.post(
         `http://localhost:5000/api/rooms/leave/${roomId}`,
         {},
-        { withCredentials: true }
+        { withCredentials: true } // Send credentials along with the request
       );
-      // Update the rooms state
+      // Update the rooms state by removing the current user from the left room's members list
       setRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === roomId) {
             return {
               ...room,
-              members: room.members.filter(
-                (member) => member !== user.username
-              ),
+              members: room.members.filter((member) => member !== user.username),
             };
           } else {
             return room;
@@ -2045,16 +2149,10 @@ const RoomList = () => {
     }
   };
 
+  // Function to handle click on a room, set the selected room's members and ID
   const handleRoomClick = (members, roomId) => {
     setSelectedRoomMembers(members);
     setSelectedRoomId(roomId);
-  };
-
-  // Add function to handle user click and set selected private chat ID
-  const handleUserClick = (e, user1, user2) => {
-    e.preventDefault(); // prevent the default link action
-    setSelectedPrivateChatId([user1, user2].sort().join("-"));
-    setSelectedRoomId(null); // clear selected room ID
   };
 
   return (
@@ -2063,7 +2161,10 @@ const RoomList = () => {
         <h2>Chat Rooms</h2>
         {rooms.map((room) => (
           <div key={room.id}>
-            <h3 className="room-name" onClick={() => handleRoomClick(room.members, room.id)}>
+            <h3
+              className="room-name"
+              onClick={() => handleRoomClick(room.members, room.id)}
+            >
               {room.name}
             </h3>
             <div className="room-buttons">
@@ -2085,32 +2186,24 @@ const RoomList = () => {
           </div>
         ))}
       </div>
-      {selectedRoomId && !selectedPrivateChatId && (
-        selectedRoomMembers.includes(user.username) ? (
-          <ChatRoom
-            user={user}
-            roomId={selectedRoomId}
-            roomName={rooms.find((room) => room.id === selectedRoomId).name}
-            chatRoomMembers={chatRoomMembers}
-            setChatRoomMembers={setChatRoomMembers}
-            setOnlineUsers={setOnlineUsers}
-            setMembers={setMembers}
-          />
-        ) : (
-          <div>You are not a member, please join the room!</div>
-        )
-      )}
-      {selectedPrivateChatId && (
-        <PrivateChat user={user} chatId={selectedPrivateChatId} />
+      {selectedRoomId && selectedRoomMembers.includes(user.username) ? (
+        <ChatRoom
+          user={user}
+          roomId={selectedRoomId}
+          roomName={rooms.find((room) => room.id === selectedRoomId).name}
+          chatRoomMembers={chatRoomMembers}
+          setChatRoomMembers={setChatRoomMembers}
+          setOnlineUsers={setOnlineUsers}
+          setMembers={setMembers}
+        />
+      ) : (
+        <div>You are not a member, please join the room!</div>
       )}
       <div className="user-list">
         {members.map((member, index) =>
           member !== user.username ? (
             <div key={index}>
-              <Link 
-                to={`/private/${[user.username, member].sort().join("-")}`}
-                onClick={(e) => handleUserClick(e, user.username, member)}
-              >
+              <Link to={`/private/${[user.username, member].sort().join("-")}`}>
                 {member}
               </Link>
               {onlineUsers[member] ? (
@@ -2124,31 +2217,10 @@ const RoomList = () => {
       </div>
     </div>
   );
-  
 };
 
 export default RoomList;
 
-
-==============================
-
--Rooms.js
-import { Routes, Route} from "react-router-dom";
-import RoomList from "./RoomList";
-import CreateRoom from "./CreateRoom";
-import ProtectedChatRoom from "./ProtectedChatRoom";
-function Rooms({ user }) {
-    return (
-      <>
-        <RoomList user={user} />
-        <CreateRoom user={user} />
-        <Routes>
-          <Route path=":roomId" element={<ProtectedChatRoom />} />
-        </Routes>
-      </>
-    );
-  }
-  export default Rooms;
 
 ==============================
 
@@ -2160,38 +2232,53 @@ import io from 'socket.io-client';
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+  // State to store user information
   const [user, setUser] = useState(null);
+  
+  // State to store the socket connection
   const [socket, setSocket] = useState(null);
 
-  // Create socket connection when user logs in
+  // Function to create a socket connection when the user logs in
   const login = (username) => {
     setUser({ username });
 
+    // Establish a new socket connection to the server
     const newSocket = io('http://localhost:5000');
+
+    // Emit a 'login' event to the server with the username
     newSocket.emit('login', username);
+
+    // Save the new socket connection in the state
     setSocket(newSocket);
   };
 
-  // Disconnect socket when user logs out
+  // Function to disconnect the socket and clear the user information when the user logs out
   const logout = () => {
     setUser(null);
 
     if (socket) {
+      // Emit a 'logout' event to the server with the current username
       socket.emit('logout', user.username);
+
+      // Disconnect the socket
       socket.disconnect();
     }
+
+    // Clear the socket from the state
     setSocket(null);
   };
 
-  // Cleanup socket connection on unmount
+  // Cleanup the socket connection on component unmount
   useEffect(() => {
     return () => {
       if (socket) {
+        // Disconnect the socket if it exists when the component is unmounted
         socket.disconnect();
       }
     };
   }, [socket]);
 
+  // Provide the user, login, and logout functions to the children components
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       {children}
@@ -2203,39 +2290,66 @@ export const AuthProvider = ({ children }) => {
 ==============================
 
 -ChatContext.js
+// Importing necessary hooks and context from React
 import { useContext } from 'react';
 import { ChatContext } from '../contexts/ChatContext';
 
+// This is a custom hook that wraps the useContext hook from React.
+// It provides access to the ChatContext which contains chat messages.
 const useChat = () => {
+  // useContext is a hook that returns the context value.
+  // In this case, the context value is an object that contains the "messages" state and its updater function "setMessages".
   return useContext(ChatContext);
 };
 
 export default useChat;
 
+// Importing necessary hooks and context from React
 import React, { createContext, useState } from 'react';
 
+// Creating a Context object. When React renders a component that subscribes to this Context object,
+// it will read the current context value from the closest matching Provider above it in the tree.
 export const ChatContext = createContext();
 
+// The ChatProvider component wraps its children with a context provider that allows them to access the "messages" state.
+// Any child component can read or update the "messages" state if it's wrapped with this Provider.
 export const ChatProvider = ({ children }) => {
+  // "messages" state is initialized as an empty array. It's meant to hold chat messages.
+  // setMessages is the updater function for the "messages" state.
   const [messages, setMessages] = useState([]);
 
+  // The Provider component allows child components to subscribe to context changes.
   return (
     <ChatContext.Provider value={{ messages, setMessages }}>
+      {/* children represents the inner content of this component. In other words, any elements/components between the opening and closing tags of this component. */}
       {children}
     </ChatContext.Provider>
   );
 };
 
+
 ==============================
 
 -RoomsContext.js
+// Importing necessary libraries and hooks from React
 import { createContext, useState } from 'react';
 
+// Create a context for Rooms
+// This context will be used to share rooms state across different components
 export const RoomsContext = createContext();
 
+// Create a context provider component
+// This component will wrap other components and provide them access to the rooms state
 export const RoomsProvider = ({ children }) => {
+
+  // Define a state variable for rooms with its setter function
+  // Initial value of rooms is an empty array
   const [rooms, setRooms] = useState([]);
 
+  // The provider component returns a RoomsContext.Provider component
+  // The value prop of the provider is an object with the rooms state and its setter function
+  // This makes the rooms state and the function to update it available to all child components
+  // The children prop is used to render the child components that this provider will wrap
   return (
     <RoomsContext.Provider value={{ rooms, setRooms }}>
       {children}
@@ -2247,27 +2361,37 @@ export const RoomsProvider = ({ children }) => {
 ==============================
 
 -UseAuth.js
+// Importing the necessary libraries and modules
 import { useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 
+// UseAuth is a custom hook that enables any component in our application 
+// to access the authentication context. This is useful for determining 
+// if a user is authenticated, obtaining the current user's information, etc.
 const UseAuth = () => {
-  
+  // useContext is a React hook that allows you to access context data. 
+  // Here we are using it to access the data in AuthContext.
   return useContext(AuthContext);
 };
 
+// Exporting the UseAuth hook so it can be used in other parts of the application.
 export default UseAuth;
+
 
 ==============================
 
 -UseChat.js
-import { useContext } from 'react';
-import { ChatContext } from '../contexts/ChatContext';
+// Importing the necessary dependencies
+import { useContext } from "react"; // React's useContext hook is used for accessing the context
+import { ChatContext } from "../contexts/ChatContext"; // Importing ChatContext to use it in our custom hook
 
+// A custom hook called useChat that uses the useContext hook to access the ChatContext
 const useChat = () => {
-  return useContext(ChatContext);
+  return useContext(ChatContext); // Using useContext to access the ChatContext and returning it
 };
 
-export default useChat;
+export default useChat; // Exporting the useChat custom hook for use in other components
+
 
 ==============================
 

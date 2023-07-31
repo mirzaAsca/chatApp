@@ -1,18 +1,20 @@
 @import url(https://fonts.googleapis.com/css?family=Lato:400,700);
 
 :root {
-  --green: #86BB71;
-  --blue: #94C2ED;
-  --orange: #E38968;
-  --gray: #92959E;
+  --green: #86bb71;
+  --blue: #94c2ed;
+  --orange: #e38968;
+  --gray: #92959e;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
-  background: #C5DDEB;
+  background: #c5ddeb;
   font: 14px/20px "Lato", Arial, sans-serif;
   height: 100vh;
   margin: 0; /* remove default margin */
@@ -20,13 +22,10 @@ body {
   color: white;
 }
 
-
-
 .people-list {
-  width:260px;
+  width: 260px;
   height: auto;
   float: left;
-  
 }
 
 .people-list .search {
@@ -38,7 +37,7 @@ body {
   border: none;
   padding: 14px;
   color: white;
-  background: #6A6C75;
+  background: #6a6c75;
   width: 90%;
   font-size: 14px;
 }
@@ -77,14 +76,12 @@ body {
   flex-grow: 1;
 }
 
-
-
 .chat {
   display: flex;
   flex-direction: column;
   width: 490px;
-  float:left;
-  background: #F2F5F8;
+  float: left;
+  background: #f2f5f8;
   border-top-right-radius: 5px;
   border-bottom-right-radius: 5px;
   color: #434651;
@@ -117,7 +114,7 @@ body {
 
 .chat .fa-star {
   float: right;
-  color: #D8DADF;
+  color: #d8dadf;
   font-size: 20px;
   margin-top: 12px;
 }
@@ -136,7 +133,7 @@ body {
 }
 
 .chat .chat-history .message-data-time {
-  color: #84888C;  /* lighten($gray, 8%) */
+  color: #84888c; /* lighten($gray, 8%) */
   padding-left: 6px;
 }
 
@@ -206,20 +203,22 @@ body {
   border: none;
   cursor: pointer;
   font-weight: bold;
-  background: #F2F5F8;
+  background: #f2f5f8;
 }
 
 .chat .chat-message button:hover {
-  color: #7092BF;  /* darken($blue, 7%) */
+  color: #7092bf; /* darken($blue, 7%) */
 }
 
-.online, .offline, .me {
+.online,
+.offline,
+.me {
   margin-right: 3px;
   font-size: 20px;
 }
 
 .online {
-  color: #86BB71;
+  color: #86bb71;
 }
 
 .offline {
@@ -258,11 +257,8 @@ body {
   justify-content: space-between;
 }
 
-
-
 .list::-webkit-scrollbar {
-width: 15px;
-;
+  width: 15px;
 }
 
 .list::-webkit-scrollbar-thumb {
@@ -295,7 +291,6 @@ li::marker {
   direction: rtl;
 }
 
-
 .name {
   text-align: left;
 }
@@ -304,9 +299,138 @@ li::marker {
   visibility: hidden;
 }
 
-.message-data-status{
+.message-data-status {
   display: inline-block;
   width: 100%;
-  color: #84888C;  /* lighten($gray, 8%) */
+  color: #84888c; /* lighten($gray, 8%) */
   padding-left: 6px;
+}
+
+/* RoomList & UserList container */
+.room-user-list-container {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+}
+
+/* Common styles for RoomList & UserList */
+.room-list,
+.user-list {
+  width: 25rem;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  background: #f2f5f8;
+  border-radius: 7px;
+}
+
+.room-list h3,
+.user-list h3 {
+  text-align: center;
+  color: #434651;
+  margin-bottom: 20px;
+}
+
+.room-name {
+  text-align: center;
+  color: #434651;
+  margin-bottom: 20px;
+  cursor: pointer; /* Add this to change the cursor when hovering over the room name */
+
+}
+.room-name:hover {
+  color: var(--blue);
+}
+
+
+.room-list div,
+.user-list div {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: stretch; /* This will make child elements take full height of the div */
+  width: 100%;
+  margin-bottom: 5px; /* Reduced from 10px */
+
+}
+
+
+.user-list div {
+
+  padding: 5px; /* Added some padding */
+}
+
+
+
+
+
+.room-list h3,
+.user-list h3 {
+  flex: 1; /* This will make the h3 take the remaining space */
+  margin-bottom: 10px;
+  min-width: 130px
+}
+
+.room-list h3 {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  flex: 1;
+  margin-bottom: 10px;
+  white-space: nowrap;       /* Prevents the text from wrapping into multiple lines */
+  overflow: hidden;          /* Hides the text that overflows the element's box */
+  text-overflow: ellipsis;   /* Adds an ellipsis when the text overflows */
+}
+
+.room-list h3 a {
+  display: block;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 90%; /* adjust this as needed */
+}
+
+
+
+.room-list a,
+.user-list a {
+  color: #434651;
+  text-decoration: none;
+  text-align: left;
+}
+
+.room-list a:hover,
+.user-list a:hover {
+  color: var(--blue);
+}
+
+/* Specific styles for RoomList buttons */
+.room-list button {
+  margin: 5px;
+  color: var(--blue);
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  background: #f2f5f8;
+}
+
+.room-list button:hover {
+  color: #7092bf;
+}
+
+/* Specific styles for the RoomList buttons container */
+.room-buttons {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%; /* This will make the buttons container take full height of the parent div */
+  width: 100px; /* Adjust this as per your design */
+  flex: 1;
+}
+
+.room-list button svg {
+  fill: currentColor;
+  width: 20px;  /* adjust as needed */
+  height: 20px;  /* adjust as needed */
 }

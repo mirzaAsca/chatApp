@@ -62,7 +62,6 @@ const MainApp = () => {
           <Route path="/register" element={<RegisterForm />} />
           {user && (
             <>
-              <Route path="/rooms/:roomId" element={<ProtectedChatRoom />} />
               <Route path="/private/:chatId" element={<PrivateChat user={user} />} />
 
               <Route

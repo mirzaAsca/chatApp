@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
-import { useParams, Link } from "react-router-dom";
 import '../App.css';
 
 let socket;
-const ChatRoom = ({ user }) => {
+const ChatRoom = ({ user, roomId, roomName, members = [], setMembers }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [onlineUsers, setOnlineUsers] = useState({});
-  const [members, setMembers] = useState([]);
-  const { roomId } = useParams();
   const messagesEndRef = useRef(null);
+  
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,19 +53,21 @@ const ChatRoom = ({ user }) => {
       }
     };
 
-    const fetchRoomMembers = async () => {
-      if (roomId) {
-        try {
-          const res = await axios.get(
-            `http://localhost:5000/api/rooms/${roomId}/members`,
-            { withCredentials: true }
-          );
-          setMembers(res.data.members);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    };
+// Use setMembers from props
+const fetchRoomMembers = async () => {
+  if (roomId) {
+    try {
+      const res = await axios.get(
+        `http://localhost:5000/api/rooms/${roomId}/members`,
+        { withCredentials: true }
+      );
+      setMembers(res.data.members);  // use setMembers from props
+    } catch (err) {
+      console.error(err);
+    }
+  }
+};
+
 
     fetchMessages();
     fetchRoomMembers();
@@ -140,26 +140,12 @@ const ChatRoom = ({ user }) => {
   return (
     <div className="chat">
       <div className="chat-header clearfix">
-        <div className="online-users">
-          <ul>
-            {members.map((member, index) => (
-              <li key={index}>
-                <Link to={`/private/${member}`}>
-                  {member}
-                </Link>
-                {onlineUsers[member] ? (
-                  <span style={{ color: "green" }}>◉</span>
-                ) : (
-                  <span style={{ color: "red" }}>◉</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
 
-        <div className="chat-about">
-          <div className="chat-with">Chat with {roomId}</div>
-        </div>
+
+      <div className="chat-about">
+  <div className="chat-with">Room: {roomName}</div>
+</div>
+
       </div>
 
       <div className="chat-history">

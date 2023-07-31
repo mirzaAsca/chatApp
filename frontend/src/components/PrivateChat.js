@@ -152,9 +152,7 @@ const PrivateChat = ({ user }) => {
           {messages.map((message, index) => (
             <li className="clearfix" key={index}>
               <div className={`message-data ${message.isUserSender ? 'align-right' : 'align-left'}`}>
-                <span className="message-data-time">
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </span>
+
                 <span className="message-data-name">{message.isUserSender ? "You" : message.sender}</span>
                 <span className="message-data-status">
                   Status: {message.status || 'sent'}

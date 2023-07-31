@@ -52,6 +52,7 @@
 │       ├── App.css
 │       ├── App.js
 │       ├── App.test.js
+│       ├── Home.css
 │       ├── components
 │       │   ├── ChatRoom.js
 │       │   ├── CreateRoom.js
@@ -62,7 +63,12 @@
 │       │   ├── ProtectedChatRoom.js
 │       │   ├── ProtectedRoute.js
 │       │   ├── RegisterForm.js
-│       │   └── RoomList.js
+│       │   ├── RoomList.js
+│       │   ├── Rooms.js
+│       │   └── media
+│       │       ├── correct.svg
+│       │       ├── delete.svg
+│       │       └── leave.svg
 │       ├── contexts
 │       │   ├── AuthContext.js
 │       │   ├── ChatContext.js
@@ -76,6 +82,7 @@
 │       ├── reportWebVitals.js
 │       └── setupTests.js
 ├── source - Copy.txt
+├── source copy.txt
 ├── source.txt
 └── structure.py
 
@@ -1200,6 +1207,7 @@ import LogoutButton from "./components/LogoutButton";
 import PrivateChat from "./components/PrivateChat";
 import { RoomsProvider } from './contexts/RoomsContext';
 
+
 const MainApp = () => {
   const { user } = useContext(AuthContext);
   const location = useLocation();
@@ -1285,24 +1293,30 @@ test('renders learn react link', () => {
 ==============================
 
 -ChatRoom.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
-import { useParams, Link } from "react-router-dom";
+import '../App.css';
 
 let socket;
-const ChatRoom = ({ user }) => {
+const ChatRoom = ({ user, roomId, roomName, members = [], setMembers }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const [members, setMembers] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState({}); // added this line to keep track of online users
-  const { roomId } = useParams();
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const messagesEndRef = useRef(null);
+  
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
 
   useEffect(() => {
     socket = io("http://localhost:5000");
 
     socket.on("connect", () => {
-      socket.emit("joinRoom", roomId, user.username); // added username parameter
+      socket.emit("joinRoom", roomId, user.username);
     });
 
     const fetchMessages = async () => {
@@ -1318,9 +1332,15 @@ const ChatRoom = ({ user }) => {
                 return {
                   ...message,
                   isUserSender: message.sender === user.username,
+                  alignment: message.sender === user.username ? "align-right" : "align-left",
+                  name: message.sender,
+                  time: new Date(message.timestamp).toLocaleTimeString(),
+                  id: message._id,
+                  meOrNot: message.sender === user.username ? "me" : "not-me",
+                  otherOrMy: message.sender === user.username ? "my" : "other",
                 };
               })
-              .reverse() // Add this line
+              .reverse()
           );
         } catch (err) {
           console.error(err);
@@ -1328,19 +1348,21 @@ const ChatRoom = ({ user }) => {
       }
     };
 
-    const fetchRoomMembers = async () => {
-      if (roomId) {
-        try {
-          const res = await axios.get(
-            `http://localhost:5000/api/rooms/${roomId}/members`,
-            { withCredentials: true }
-          );
-          setMembers(res.data.members);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    };
+// Use setMembers from props
+const fetchRoomMembers = async () => {
+  if (roomId) {
+    try {
+      const res = await axios.get(
+        `http://localhost:5000/api/rooms/${roomId}/members`,
+        { withCredentials: true }
+      );
+      setMembers(res.data.members);  // use setMembers from props
+    } catch (err) {
+      console.error(err);
+    }
+  }
+};
+
 
     fetchMessages();
     fetchRoomMembers();
@@ -1351,11 +1373,16 @@ const ChatRoom = ({ user }) => {
         {
           ...message,
           isUserSender: message.sender === user.username,
+          alignment: message.sender === user.username ? "align-right" : "align-left",
+          name: message.sender,
+          time: new Date(message.timestamp).toLocaleTimeString(),
+          id: message._id,
+          meOrNot: message.sender === user.username ? "me" : "not-me",
+          otherOrMy: message.sender === user.username ? "my" : "other",
         },
       ]);
     });
 
-    // New code for handling userOnline and userOffline events
     socket.on("userOnline", (username) => {
       setOnlineUsers((prevUsers) => ({ ...prevUsers, [username]: true }));
     });
@@ -1370,69 +1397,81 @@ const ChatRoom = ({ user }) => {
       socket.off("userOffline");
     };
   }, [roomId, user.username]);
+
   const sendMessage = async (e) => {
     e.preventDefault();
-    try {
-      const message = {
-        text: newMessage,
-        roomId: roomId, // roomId is used instead of chatId
-        sender: user.username,
-        timestamp: Date.now(),
-        isUserSender: true,
-      };
 
-      console.log(`emit sendMessage with message: ${JSON.stringify(message)}`);
-      socket.emit("sendMessage", message);
+    if (newMessage.trim() !== "") {
+      try {
+        const message = {
+          text: newMessage,
+          roomId: roomId,
+          sender: user.username,
+          timestamp: Date.now(),
+          isUserSender: true,
+        };
 
-      console.log(`Sent message to server: ${JSON.stringify(message)}`);
-      setNewMessage("");
-    } catch (err) {
-      console.error(err);
+        socket.emit("sendMessage", message);
+        setNewMessage("");
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
-  function customEncodeURIComponent(str) {
-    return encodeURIComponent(str).replace(/%40/g, "@");
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!e.shiftKey) {
+        sendMessage(e);
+      }
+    }
   }
 
   return (
-    <div>
-      <h2>Room: {roomId}</h2>
-      <h3>Members:</h3>
-      <ul>
-        {members.map((member, index) => (
-          <li key={index}>
-            <Link
-              to={`/private/${customEncodeURIComponent(
-                [user.username, member].sort().join("-")
-              )}`}
-            >
-              {member}
-            </Link>
+    <div className="chat">
+      <div className="chat-header clearfix">
 
-            {onlineUsers[member] ? (
-              <span style={{ color: "green" }}>â—‰</span>
-            ) : (
-              <span style={{ color: "red" }}>â—‰</span>
-            )}
-          </li>
-        ))}
-      </ul>
-      {messages.map((message, index) => (
-        <div key={index}>
-          <p>{message.text}</p>
-          <p>By: {message.sender === user.username ? "You" : message.sender}</p>
-        </div>
-      ))}
 
-      <form onSubmit={sendMessage}>
-        <input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Send a message"
-        />
-        <button type="submit">Send</button>
-      </form>
+      <div className="chat-about">
+  <div className="chat-with">Room: {roomName}</div>
+</div>
+
+      </div>
+
+      <div className="chat-history">
+        <ul>
+          {messages.map((message) => (
+            <li className="clearfix" key={message.id}>
+              <div className={`message-data ${message.alignment}`}>
+              <span className="message-data-name">{message.isUserSender ? 'You' : message.sender}</span>                <i className={`fa fa-circle ${message.meOrNot}`}></i>
+              </div>
+              <div className={`message ${message.otherOrMy}-message float-right`}>
+                {message.text}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="chat-message clearfix">
+        <form onSubmit={sendMessage}>
+          <textarea
+            name="message-to-send"
+            id="message-to-send"
+            placeholder="Type your message"
+            rows="1"
+            value={newMessage}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+          ></textarea>
+          <button type="submit">Send</button>
+        </form>
+      </div>
     </div>
   );
 };
@@ -1610,15 +1649,26 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 import { useParams } from "react-router-dom";
+import '../App.css';
 
 let socket;
 
 const PrivateChat = ({ user }) => {
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const { chatId: encodedChatId } = useParams();
   const chatId = decodeURIComponent(encodedChatId);
   const inputRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  console.log("PrivateChat chatId:", chatId); // Add this line
+
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
+
 
   useEffect(() => {
     socket = io("http://localhost:5000");
@@ -1679,16 +1729,25 @@ const PrivateChat = ({ user }) => {
     });
 
     // Listen for status updates from the server
-    socket.on("updateMessageStatus", ({ messageId, status }) => {
-      setMessages((prevMessages) => {
-        return prevMessages.map((message) => {
-          if (message.id === messageId) {
-            return { ...message, status };
-          }
-          return message;
+    socket.on("privateMessage", (message) => {
+      console.log(`Received privateMessage event: ${JSON.stringify(message)}`);
+      if (message.chatId === chatId) {
+        setMessages((prevMessages) => {
+          return [
+            ...prevMessages,
+            {
+              ...message,
+              isUserSender: message.sender === user.username,
+              status: "delivered",
+            },
+          ];
         });
-      });
+    
+        // Scroll to bottom after receiving a new message
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
     });
+    
 
     return () => {
       socket.off("privateMessage");
@@ -1698,117 +1757,92 @@ const PrivateChat = ({ user }) => {
     };
   }, [chatId, user]);
 
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    try {
-      const receiverUsername = chatId
-        .split("-")
-        .find((username) => username !== user.username);
-      const messageChatId = [user.username, receiverUsername].sort().join("-");
-
-      const message = {
-        text: newMessage,
-        chatId: messageChatId,
-        sender: user.username,
-        receiver: receiverUsername,
-        timestamp: Date.now(),
-        isUserSender: true,
-        status: "sent", // Add status here
-      };
-
-      console.log(
-        `emit sendPrivateMessage with message: ${JSON.stringify(message)}`
-      );
-      socket.emit("sendPrivateMessage", message);
-
-      console.log(`Sent message to server: ${JSON.stringify(message)}`);
-      setNewMessage("");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-// Create a reference for the messages state
-const messagesRef = useRef(messages);
-
-useEffect(() => {
-  // Update the messagesRef current value whenever messages changes
-  messagesRef.current = messages;
-  console.log('Messages state updated:', messages);  // Log the updated messages state
-}, [messages]);
-
-useEffect(() => {
-  const handleFocus = () => {
-    console.log('Input field received focus');  // Log when the function is triggered
-
-    // Use messagesRef.current instead of messages
-    const lastDeliveredMessage = messagesRef.current.find(
-      (message) =>
-        message.isUserSender === true && message.status === "delivered"
-    );
-    console.log('Last delivered message:', lastDeliveredMessage);  // Log the found message
-
-    if (lastDeliveredMessage) {
-      socket.emit("updateMessageStatus", {
-        messageId: lastDeliveredMessage.id,
-        status: "read",
-      });
-      console.log(`Sent updateMessageStatus event to server with message ID: ${lastDeliveredMessage.id} and status: read`);
-    }
-  };
-
-  const inputField = inputRef.current;
-  console.log('inputField:', inputField);  // Log the input field
-
-  if (inputField) {
-    inputField.addEventListener("focus", handleFocus);
-    console.log('Focus event listener added');  // Log that the event listener was added
-
-    return () => {
-      inputField.removeEventListener("focus", handleFocus);
-      console.log('Focus event listener removed');  // Log that the event listener was removed
-    };
-  }
-}, [socket, newMessage]);  // Remove messages from the dependencies
-
   
 
+  const sendMessage = async (e) => {
+    e.preventDefault();
+
+    const receiverUsername = chatId.split("-").find((username) => username !== user.username);
+    const messageChatId = [user.username, receiverUsername].sort().join("-");
+
+    const message = {
+      text: inputValue,
+      chatId: messageChatId,
+      sender: user.username,
+      receiver: receiverUsername,
+      timestamp: Date.now(),
+      isUserSender: true,
+      status: "sent",
+    };
+
+    socket.emit("sendPrivateMessage", message);
+
+    setInputValue("");
+  };
+
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+  };
+
   return (
-    <div>
-      <h2>
-        Chat with:{" "}
-        {chatId.split("-").find((username) => username !== user.username)}
-      </h2>
+    <div className="chat">
+      <div className="chat-header clearfix">
+        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/195612/chat_avatar_01_green.jpg" alt="avatar" />
+  
+        <div className="chat-about">
+          <div className="chat-with">Chat with {chatId.split("-").find((username) => username !== user.username)}</div>
+          <div className="chat-num-messages">already {messages.length} messages</div>
+        </div>
+        <i className="fa fa-star"></i>
+      </div>
+  
+      <div className="chat-history" ref={chatContainerRef}>
+        <ul>
+          {messages.map((message, index) => (
+            <li className="clearfix" key={index}>
+              <div className={`message-data ${message.isUserSender ? 'align-right' : 'align-left'}`}>
 
-      {messages.map((message, index) => {
-        return (
-          <div key={index}>
-            <p>{message.text}</p>
-            <p>
-              By: {message.sender === user.username ? "You" : message.sender}
-            </p>
-            {message.isUserSender && <p>Status: {message.status || "sent"}</p>}
-          </div>
-        );
-      })}
+                <span className="message-data-name">{message.isUserSender ? "You" : message.sender}</span>
+                <span className="message-data-status">
+                  Status: {message.status || 'sent'}
+                </span>
+                <i className={`fa fa-circle ${message.isUserSender ? 'me' : ''}`}></i>
+              </div>
+              <div className={`message ${message.isUserSender ? 'my' : 'other'}-message float-right`}>
+                {message.text}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+  
+      <div className="chat-message clearfix">
+        <form onSubmit={sendMessage}>
+        <textarea
+  name="message-to-send"
+  id="message-to-send"
+  placeholder="Type your message"
+  rows="3"
+  value={inputValue}
+  onChange={handleInputChange}
+  onKeyPress={(e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(e);
+    }
+  }}
+></textarea>
 
-      <form onSubmit={sendMessage}>
-        <input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Send a message"
-          id="message-input"
-          ref={inputRef} // Assign the ref to inputRef
-        />
-
-        <button type="submit">Send</button>
-      </form>
+          <i className="fa fa-file-o"></i> &nbsp;&nbsp;&nbsp;
+          <i className="fa fa-file-image-o"></i>
+          <button type="submit">Send</button>
+        </form>
+      </div>
     </div>
   );
 };
 
 export default PrivateChat;
-
 
 ==============================
 
@@ -1902,18 +1936,29 @@ export default RegisterForm;
 
 -RoomList.js
 // RoomList.js
-import React, { useContext, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import UseAuth from "../hooks/UseAuth";
 import { Link } from "react-router-dom";
-import { RoomsContext } from '../contexts/RoomsContext';
+import { RoomsContext } from "../contexts/RoomsContext";
+import { ReactComponent as DeleteIcon } from "./media/delete.svg";
+import { ReactComponent as LeaveIcon } from "./media/leave.svg";
+import { ReactComponent as CorrectIcon } from "./media/correct.svg";
+import ChatRoom from "./ChatRoom";
+import PrivateChat from "./PrivateChat";
 
 const RoomList = () => {
   const { rooms, setRooms } = useContext(RoomsContext);
 
   const navigate = useNavigate();
   const { user } = UseAuth();
+  const [selectedRoomMembers, setSelectedRoomMembers] = useState([]);
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
+  const [chatRoomMembers, setChatRoomMembers] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const [members, setMembers] = useState([]);
+  const [selectedPrivateChatId, setSelectedPrivateChatId] = useState(null);
 
   useEffect(() => {
     if (!user) {
@@ -1924,14 +1969,12 @@ const RoomList = () => {
           const res = await axios.get("http://localhost:5000/api/rooms", {
             withCredentials: true,
           });
-          console.log(res.data.rooms); // Add this line
           setRooms(res.data.rooms);
-          console.log('Rooms in RoomList after setting:', rooms); // Add this line
         } catch (err) {
           console.error(err);
         }
       };
-  
+
       fetchRooms();
     }
   }, [user, navigate]);
@@ -1941,7 +1984,6 @@ const RoomList = () => {
       await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
         withCredentials: true,
       });
-      // Refresh room list after deletion
       const res = await axios.get("http://localhost:5000/api/rooms", {
         withCredentials: true,
       });
@@ -1958,7 +2000,19 @@ const RoomList = () => {
         {},
         { withCredentials: true }
       );
-      navigate(`/rooms/${roomId}`);
+      // Update the rooms state
+      setRooms((prevRooms) => {
+        return prevRooms.map((room) => {
+          if (room.id === roomId) {
+            return {
+              ...room,
+              members: [...room.members, user.username],
+            };
+          } else {
+            return room;
+          }
+        });
+      });
     } catch (err) {
       console.error(err);
     }
@@ -1971,42 +2025,130 @@ const RoomList = () => {
         {},
         { withCredentials: true }
       );
-      navigate(`/rooms`);
+      // Update the rooms state
+      setRooms((prevRooms) => {
+        return prevRooms.map((room) => {
+          if (room.id === roomId) {
+            return {
+              ...room,
+              members: room.members.filter(
+                (member) => member !== user.username
+              ),
+            };
+          } else {
+            return room;
+          }
+        });
+      });
     } catch (err) {
       console.error(err);
     }
   };
 
-  return user ? (
-    <div>
-      <h2>Chat Rooms</h2>
-      {rooms.map((room) => (
-        <div key={room.id}>
-          <h3>
-            <Link to={`/rooms/${room.id}`}>{room.name}</Link>
-            {room.members.map(
-              (member, index) =>
-                member !== user.username && (
-                  <Link
-                    key={index}
-                    to={`/private/${[user.username, member].sort().join("-")}`}
-                  >
-                    Private Chat with {member}
-                  </Link>
-                )
-            )}
-          </h3>
-          <button onClick={() => joinRoom(room.id)}>Join Room</button>
-          <button onClick={() => leaveRoom(room.id)}>Leave Room</button>
-          <button onClick={() => deleteRoom(room.id)}>Delete Room</button>
-        </div>
-      ))}
+  const handleRoomClick = (members, roomId) => {
+    setSelectedRoomMembers(members);
+    setSelectedRoomId(roomId);
+  };
+
+  // Add function to handle user click and set selected private chat ID
+  const handleUserClick = (e, user1, user2) => {
+    e.preventDefault(); // prevent the default link action
+    setSelectedPrivateChatId([user1, user2].sort().join("-"));
+    setSelectedRoomId(null); // clear selected room ID
+  };
+
+  return (
+    <div className="room-user-list-container">
+      <div className="room-list">
+        <h2>Chat Rooms</h2>
+        {rooms.map((room) => (
+          <div key={room.id}>
+            <h3 className="room-name" onClick={() => handleRoomClick(room.members, room.id)}>
+              {room.name}
+            </h3>
+            <div className="room-buttons">
+              {room.members.includes(user.username) ? (
+                <button disabled>
+                  <CorrectIcon />
+                  Joined
+                </button>
+              ) : (
+                <button onClick={() => joinRoom(room.id)}>Join</button>
+              )}
+              <button onClick={() => leaveRoom(room.id)}>
+                <LeaveIcon />
+              </button>
+              <button onClick={() => deleteRoom(room.id)}>
+                <DeleteIcon />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {selectedRoomId && !selectedPrivateChatId && (
+        selectedRoomMembers.includes(user.username) ? (
+          <ChatRoom
+            user={user}
+            roomId={selectedRoomId}
+            roomName={rooms.find((room) => room.id === selectedRoomId).name}
+            chatRoomMembers={chatRoomMembers}
+            setChatRoomMembers={setChatRoomMembers}
+            setOnlineUsers={setOnlineUsers}
+            setMembers={setMembers}
+          />
+        ) : (
+          <div>You are not a member, please join the room!</div>
+        )
+      )}
+      {selectedPrivateChatId && (
+        <PrivateChat user={user} chatId={selectedPrivateChatId} />
+      )}
+      <div className="user-list">
+        {members.map((member, index) =>
+          member !== user.username ? (
+            <div key={index}>
+              <Link 
+                to={`/private/${[user.username, member].sort().join("-")}`}
+                onClick={(e) => handleUserClick(e, user.username, member)}
+              >
+                {member}
+              </Link>
+              {onlineUsers[member] ? (
+                <span style={{ color: "green" }}>â—‰</span>
+              ) : (
+                <span style={{ color: "red" }}>â—‰</span>
+              )}
+            </div>
+          ) : null
+        )}
+      </div>
     </div>
-  ) : null;
+  );
+  
 };
 
 export default RoomList;
 
+
+==============================
+
+-Rooms.js
+import { Routes, Route} from "react-router-dom";
+import RoomList from "./RoomList";
+import CreateRoom from "./CreateRoom";
+import ProtectedChatRoom from "./ProtectedChatRoom";
+function Rooms({ user }) {
+    return (
+      <>
+        <RoomList user={user} />
+        <CreateRoom user={user} />
+        <Routes>
+          <Route path=":roomId" element={<ProtectedChatRoom />} />
+        </Routes>
+      </>
+    );
+  }
+  export default Rooms;
 
 ==============================
 

@@ -1,6 +1,6 @@
 // Required packages
 const IORedis = require("ioredis");
-const bcrypt = require("bcrypt");
+const bcryptjs = require("bcryptjs");
 
 // Create a Redis client
 // The `retryStrategy` function is used to control how often and when to retry connecting.
@@ -25,10 +25,10 @@ redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
-// A helper function to hash a password using bcrypt.
+// A helper function to hash a password using bcryptjs.
 async function hashPassword(password) {
-  const salt = await bcrypt.genSalt(10);
-  return await bcrypt.hash(password, salt);
+  const salt = await bcryptjs.genSalt(10);
+  return await bcryptjs.hash(password, salt);
 }
 
 // A function to add a new user to the Redis store.

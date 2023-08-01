@@ -1,7 +1,9 @@
 ├── .git
 ├── README.md
+├── RateLimiting.md
 ├── backend
 │   ├── .gitignore
+│   ├── Dockerfile
 │   ├── node_modules
 │   ├── package-lock.json
 │   ├── package.json
@@ -28,15 +30,12 @@
 │       │   ├── roomRoutes.js
 │       │   └── userRoutes.js
 │       ├── server.js
-│       └── tests
-│           ├── integration
-│           │   ├── chat.test.js
-│           │   └── user.test.js
-│           └── unit
-│               ├── chat.test.js
-│               └── user.test.js
+│       └── test
+│           └── user-authentication.test.js
+├── docker-compose.yml
 ├── frontend
 │   ├── .gitignore
+│   ├── Dockerfile
 │   ├── README.md
 │   ├── node_modules
 │   ├── package-lock.json
@@ -64,6 +63,7 @@
 │       │   ├── ProtectedRoute.js
 │       │   ├── RegisterForm.js
 │       │   ├── RoomList.js
+│       │   ├── Rooms.js
 │       │   └── media
 │       │       ├── correct.svg
 │       │       ├── delete.svg
@@ -80,6 +80,9 @@
 │       ├── logo.svg
 │       ├── reportWebVitals.js
 │       └── setupTests.js
+├── node_modules
+├── package-lock.json
+├── package.json
 ├── source - Copy.txt
 ├── source copy.txt
 ├── source.txt
@@ -536,7 +539,7 @@ exports.editRoom = async (req, res, next) => {
 ==============================
 
 -userController.js
-const bcrypt = require("bcrypt");
+const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const IORedis = require("ioredis");
@@ -570,7 +573,7 @@ exports.login = async (req, res, next) => {
       return res.status(400).json({ error: "User does not exist" });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcryptjs.compare(password, user.password);
 
     if (!validPassword) {
       return res.status(400).json({ error: "Invalid password" });
@@ -941,7 +944,7 @@ module.exports = {
 -User.js
 // Required packages
 const IORedis = require("ioredis");
-const bcrypt = require("bcrypt");
+const bcryptjs = require("bcryptjs");
 
 // Create a Redis client
 // The `retryStrategy` function is used to control how often and when to retry connecting.
@@ -966,10 +969,10 @@ redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
-// A helper function to hash a password using bcrypt.
+// A helper function to hash a password using bcryptjs.
 async function hashPassword(password) {
-  const salt = await bcrypt.genSalt(10);
-  return await bcrypt.hash(password, salt);
+  const salt = await bcryptjs.genSalt(10);
+  return await bcryptjs.hash(password, salt);
 }
 
 // A function to add a new user to the Redis store.
@@ -1013,7 +1016,7 @@ const Redis = require("ioredis");
 const redis = new Redis({
   host: process.env.REDIS_HOST,  // The host of the Redis server
   port: process.env.REDIS_PORT,  // The port of the Redis server
-  password: process.env.REDIS_PASSWORD,  // The password for the Redis server
+  password: process.env.REDIS_PASSWORD,  // The password for the Redis server, if any
 });
 
 // Set up an event listener for successful Redis connection
@@ -1216,23 +1219,113 @@ server.listen(process.env.PORT || 5000, () => {
 
 ==============================
 
--chat.test.js
+-user-authentication.test.js
+const chai = require('chai');
+const chaiHttp = require('chai-http');
+const app = require('../server');
+const expect = chai.expect;
+const redis = require('redis-mock');
+const client = redis.createClient();
 
+chai.use(chaiHttp);
 
-==============================
+describe('User authentication', () => {
+  describe('POST /api/register', () => {
+    it('should register a new user', (done) => {
+      chai.request(app)
+        .post('/api/register')
+        .send({
+          username: 'testuser',
+          password: 'testpassword',
+        })
+        .end((err, res) => {
+          expect(res).to.have.status(200);
+          expect(res.body).to.have.property('message').equal('User registered successfully');
+          done();
+        });
+    });
+  });
 
--user.test.js
+  describe('POST /api/login', () => {
+    it('should log in a user with valid credentials', (done) => {
+      chai.request(app)
+        .post('/api/login')
+        .send({
+          username: 'testuser',
+          password: 'testpassword',
+        })
+        .end((err, res) => {
+          expect(res).to.have.status(200);
+          expect(res.body).to.have.property('token');
+          done();
+        });
+    });
 
+    it('should not log in a user with invalid credentials', (done) => {
+      chai.request(app)
+        .post('/api/login')
+        .send({
+          username: 'testuser',
+          password: 'wrongpassword',
+        })
+        .end((err, res) => {
+          expect(res).to.have.status(401);
+          expect(res.body).to.have.property('message').equal('Invalid username or password');
+          done();
+        });
+    });
+  });
 
-==============================
+  describe('GET /api/profile', () => {
+    let token;
 
--chat.test.js
+    before((done) => {
+      chai.request(app)
+        .post('/api/login')
+        .send({
+          username: 'testuser',
+          password: 'testpassword',
+        })
+        .end((err, res) => {
+          token = res.body.token;
+          done();
+        });
+    });
 
+    it('should return the user profile for an authenticated user', (done) => {
+      chai.request(app)
+        .get('/api/profile')
+        .set('Authorization', 'Bearer ' + token)
+        .end((err, res) => {
+          expect(res).to.have.status(200);
+          expect(res.body).to.have.property('username').equal('testuser');
+          done();
+        });
+    });
 
-==============================
-
--user.test.js
-
+    it('should not return the user profile for an unauthenticated user', (done) => {
+      chai.request(app)
+        .get('/api/profile')
+        .end((err, res) => {
+          expect(res).to.have.status(401);
+          expect(res.body).to.have.property('message').equal('Unauthorized');
+          done();
+        });
+    });
+  });
+  
+  describe('Redis', () => {
+    it('should set and get a value from Redis', (done) => {
+      client.set('key', 'value', (err, reply) => {
+        expect(reply).to.equal('OK');
+        client.get('key', (err, reply) => {
+          expect(reply).to.equal('value');
+          done();
+        });
+      });
+    });
+  });
+});
 
 ==============================
 
@@ -2222,6 +2315,26 @@ const RoomList = () => {
 
 export default RoomList;
 
+
+==============================
+
+-Rooms.js
+import { Routes, Route} from "react-router-dom";
+import RoomList from "./RoomList";
+import CreateRoom from "./CreateRoom";
+import ProtectedChatRoom from "./ProtectedChatRoom";
+function Rooms({ user }) {
+    return (
+      <>
+        <RoomList user={user} />
+        <CreateRoom user={user} />
+        <Routes>
+          <Route path=":roomId" element={<ProtectedChatRoom />} />
+        </Routes>
+      </>
+    );
+  }
+  export default Rooms;
 
 ==============================
 

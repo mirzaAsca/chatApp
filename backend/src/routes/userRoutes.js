@@ -6,6 +6,8 @@ const auth = require('../middleware/auth');
 // Initialize a router instance
 const router = express.Router();
 
+console.log('Setting up user routes');  // Log when the user routes are being set up
+
 // Define the route for user registration. This route is handled by the register function in the userController.
 router.post('/register', userController.register);
 

@@ -1,4 +1,4 @@
-const bcrypt = require("bcrypt");
+const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const IORedis = require("ioredis");
@@ -26,15 +26,19 @@ exports.login = async (req, res, next) => {
   const { username, password } = req.body;
 
   try {
+    console.log('Login attempt:', username);  // Log the username of the login attempt
+
     const user = await User.getUser(username);
 
     if (!user || !user.password) {
+      console.log('Login error: User does not exist');  // Log if the user does not exist
       return res.status(400).json({ error: "User does not exist" });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcryptjs.compare(password, user.password);
 
     if (!validPassword) {
+      console.log('Login error: Invalid password');  // Log if the password is invalid
       return res.status(400).json({ error: "Invalid password" });
     }
 
@@ -55,12 +59,15 @@ exports.login = async (req, res, next) => {
       maxAge: 3600000, // token expiration time in milliseconds, this is equal to 1 hour
     });
 
+    console.log('Login successful:', username);  // Log if the login is successful
+
     res.status(200).json({ message: "User logged in successfully", username });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("Unhandled error in login:", error);  // Log any unhandled errors
     next(error);
   }
 };
+
 
 exports.logout = async (req, res, next) => {
   // Add the existing token to the invalidated tokens set

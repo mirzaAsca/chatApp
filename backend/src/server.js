@@ -33,9 +33,10 @@ const app = express();
 
 // Middleware for logging incoming requests
 app.use((req, res, next) => {
-  console.log(`Request received: ${req.method} ${req.path}`);
+  console.log(`Received request: ${req.method} ${req.url}`);  // Log the method and URL of incoming requests
   next();
 });
+
 
 // Create server with Socket.IO and CORS configuration
 const server = http.createServer(app);

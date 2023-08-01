@@ -8,7 +8,7 @@ const Redis = require("ioredis");
 const redis = new Redis({
   host: process.env.REDIS_HOST,  // The host of the Redis server
   port: process.env.REDIS_PORT,  // The port of the Redis server
-  password: process.env.REDIS_PASSWORD,  // The password for the Redis server
+  password: process.env.REDIS_PASSWORD,  // The password for the Redis server, if any
 });
 
 // Set up an event listener for successful Redis connection

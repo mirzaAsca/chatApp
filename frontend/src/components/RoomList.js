@@ -9,6 +9,8 @@ import { ReactComponent as DeleteIcon } from "./media/delete.svg";
 import { ReactComponent as LeaveIcon } from "./media/leave.svg";
 import { ReactComponent as CorrectIcon } from "./media/correct.svg";
 import ChatRoom from "./ChatRoom";
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
 
 const RoomList = () => {
   // Get the rooms data from the RoomsContext
@@ -30,7 +32,7 @@ const RoomList = () => {
     } else {
       const fetchRooms = async () => {
         try {
-          const res = await axios.get("http://localhost:5000/api/rooms", {
+          const res = await axios.get(`${API_BASE_URL}/api/rooms`, {
             withCredentials: true, // Send credentials along with the request
           });
           setRooms(res.data.rooms); // Update the state with fetched rooms data
@@ -46,10 +48,10 @@ const RoomList = () => {
   // Function to delete a room by its ID
   const deleteRoom = async (roomId) => {
     try {
-      await axios.delete(`http://localhost:5000/api/rooms/${roomId}`, {
+      await axios.delete(`${API_BASE_URL}/api/rooms/${roomId}`, {
         withCredentials: true, // Send credentials along with the request
       });
-      const res = await axios.get("http://localhost:5000/api/rooms", {
+      const res = await axios.get(`${API_BASE_URL}/api/rooms`, {
         withCredentials: true, // Send credentials along with the request
       });
       setRooms(res.data.rooms); // Update the state with updated rooms data after deletion
@@ -62,7 +64,7 @@ const RoomList = () => {
   const joinRoom = async (roomId) => {
     try {
       await axios.post(
-        `http://localhost:5000/api/rooms/join/${roomId}`,
+        `${API_BASE_URL}/api/rooms/join/${roomId}`,
         {},
         { withCredentials: true } // Send credentials along with the request
       );
@@ -88,7 +90,7 @@ const RoomList = () => {
   const leaveRoom = async (roomId) => {
     try {
       await axios.post(
-        `http://localhost:5000/api/rooms/leave/${roomId}`,
+        `${API_BASE_URL}/api/rooms/leave/${roomId}`,
         {},
         { withCredentials: true } // Send credentials along with the request
       );

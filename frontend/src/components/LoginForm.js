@@ -3,6 +3,7 @@ import React, { useState, useContext } from "react"; // React and its hooks.
 import axios from "axios"; // Axios to make HTTP requests.
 import { useNavigate } from "react-router-dom"; // Navigation hook from react-router.
 import { AuthContext } from "../contexts/AuthContext"; // Auth context to handle authentication.
+const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 // LoginForm component definition.
 const LoginForm = () => {
@@ -26,7 +27,7 @@ const LoginForm = () => {
     try {
       // Make a POST request to the login API endpoint with the username and password.
       const response = await axios.post(
-        "http://localhost:5000/api/users/login",
+        `${API_BASE_URL}/api/users/login`,
         { username, password },
         { withCredentials: true }
       );

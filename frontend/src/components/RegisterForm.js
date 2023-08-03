@@ -1,6 +1,8 @@
 // Importing necessary libraries
 import React, { useState } from 'react';
 import axios from 'axios';
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
 
 // Defining the RegisterForm component
 function RegisterForm() {
@@ -14,9 +16,10 @@ function RegisterForm() {
 
     try {
       // Sending a POST request to the server to register the user
-      await axios.post('http://localhost:5000/api/users/register', { username, password }, {
+      await axios.post(`${API_BASE_URL}/api/users/register`, { username, password }, {
         withCredentials: true // Include credentials (like cookies) with the request
       });
+      
       alert('Registered successfully'); // Show an alert when registration is successful
     } catch (error) {
       // If there's an error, log the error response data to the console

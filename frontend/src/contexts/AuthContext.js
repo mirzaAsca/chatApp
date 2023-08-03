@@ -1,6 +1,8 @@
 // AuthContext.js
 import React, { createContext, useState, useEffect } from 'react';
 import io from 'socket.io-client';
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
 
 export const AuthContext = createContext();
 
@@ -16,7 +18,7 @@ export const AuthProvider = ({ children }) => {
     setUser({ username });
 
     // Establish a new socket connection to the server
-    const newSocket = io('http://localhost:5000');
+    const newSocket = io(API_BASE_URL);
 
     // Emit a 'login' event to the server with the username
     newSocket.emit('login', username);

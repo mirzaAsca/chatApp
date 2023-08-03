@@ -3,6 +3,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';  // React Router's hook for navigation
 import axios from 'axios';  // HTTP client for the browser and node.js
 import { AuthContext } from '../contexts/AuthContext';  // Context for Auth
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
 
 // The LogoutButton component
 function LogoutButton() {
@@ -17,7 +19,7 @@ function LogoutButton() {
     try {
       // Making a POST request to the logout API
       await axios.post(
-        'http://localhost:5000/api/users/logout',
+        `${API_BASE_URL}/api/users/logout`,
         {},
         {
           headers: {

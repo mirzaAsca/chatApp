@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 import { useParams } from "react-router-dom";
-import '../App.css';
+import "../App.css";
+const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 // Create a socket instance
 let socket;
@@ -24,14 +25,15 @@ const PrivateChat = ({ user }) => {
   // Effect to scroll to the bottom of the chat container when new messages are received
   useEffect(() => {
     if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
   // Effect to initialize the socket connection and fetch existing messages
   useEffect(() => {
     // Initialize socket connection
-    socket = io("http://localhost:5000");
+    socket = io(API_BASE_URL);
 
     // Handle socket connection and login event
     socket.on("connect", () => {
@@ -43,12 +45,16 @@ const PrivateChat = ({ user }) => {
     const fetchMessages = async () => {
       try {
         console.log(`Fetching messages for chatId: ${chatId}`);
-        const receiverUsername = chatId.split("-").find((username) => username !== user.username);
-        const messageChatId = [user.username, receiverUsername].sort().join("-");
+        const receiverUsername = chatId
+          .split("-")
+          .find((username) => username !== user.username);
+        const messageChatId = [user.username, receiverUsername]
+          .sort()
+          .join("-");
 
         // Fetch messages from the server
         const res = await axios.get(
-          `http://localhost:5000/api/chat/privateMessages/${messageChatId}`,
+          `${API_BASE_URL}/api/chat/privateMessages/${messageChatId}`,
           { withCredentials: true }
         );
 
@@ -85,9 +91,10 @@ const PrivateChat = ({ user }) => {
             },
           ];
         });
-        
+
         // Scroll to the bottom after receiving a new message
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        chatContainerRef.current.scrollTop =
+          chatContainerRef.current.scrollHeight;
       }
     });
 
@@ -105,7 +112,9 @@ const PrivateChat = ({ user }) => {
     e.preventDefault();
 
     // Get the receiver's username and create the chatId for the message
-    const receiverUsername = chatId.split("-").find((username) => username !== user.username);
+    const receiverUsername = chatId
+      .split("-")
+      .find((username) => username !== user.username);
     const messageChatId = [user.username, receiverUsername].sort().join("-");
 
     // Create the message object
@@ -135,34 +144,54 @@ const PrivateChat = ({ user }) => {
   return (
     <div className="chat">
       <div className="chat-header clearfix">
-        <img src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/195612/chat_avatar_01_green.jpg" alt="avatar" />
-  
+        <img
+          src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/195612/chat_avatar_01_green.jpg"
+          alt="avatar"
+        />
+
         <div className="chat-about">
-          <div className="chat-with">Chat with {chatId.split("-").find((username) => username !== user.username)}</div>
-          <div className="chat-num-messages">already {messages.length} messages</div>
+          <div className="chat-with">
+            Chat with{" "}
+            {chatId.split("-").find((username) => username !== user.username)}
+          </div>
+          <div className="chat-num-messages">
+            already {messages.length} messages
+          </div>
         </div>
         <i className="fa fa-star"></i>
       </div>
-  
+
       <div className="chat-history" ref={chatContainerRef}>
         <ul>
           {messages.map((message, index) => (
             <li className="clearfix" key={index}>
-              <div className={`message-data ${message.isUserSender ? 'align-right' : 'align-left'}`}>
-                <span className="message-data-name">{message.isUserSender ? "You" : message.sender}</span>
-                <span className="message-data-status">
-                  Status: {message.status || 'sent'}
+              <div
+                className={`message-data ${
+                  message.isUserSender ? "align-right" : "align-left"
+                }`}
+              >
+                <span className="message-data-name">
+                  {message.isUserSender ? "You" : message.sender}
                 </span>
-                <i className={`fa fa-circle ${message.isUserSender ? 'me' : ''}`}></i>
+                <span className="message-data-status">
+                  Status: {message.status || "sent"}
+                </span>
+                <i
+                  className={`fa fa-circle ${message.isUserSender ? "me" : ""}`}
+                ></i>
               </div>
-              <div className={`message ${message.isUserSender ? 'my' : 'other'}-message float-right`}>
+              <div
+                className={`message ${
+                  message.isUserSender ? "my" : "other"
+                }-message float-right`}
+              >
                 {message.text}
               </div>
             </li>
           ))}
         </ul>
       </div>
-  
+
       <div className="chat-message clearfix">
         <form onSubmit={sendMessage}>
           <textarea
@@ -173,13 +202,12 @@ const PrivateChat = ({ user }) => {
             value={inputValue}
             onChange={handleInputChange}
             onKeyPress={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage(e);
               }
             }}
           ></textarea>
-
           <i className="fa fa-file-o"></i> &nbsp;&nbsp;&nbsp;
           <i className="fa fa-file-image-o"></i>
           <button type="submit">Send</button>

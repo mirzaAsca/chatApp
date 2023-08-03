@@ -2,6 +2,8 @@
 import React, { useContext, useState } from 'react';
 import axios from 'axios';
 import { RoomsContext } from '../contexts/RoomsContext';
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
 
 const CreateRoom = () => {
   // Using React's useState hook to manage roomName state
@@ -17,8 +19,8 @@ const CreateRoom = () => {
 
     try {
       // Making a POST request to the server to create a new room
-      const response = await axios.post('http://localhost:5000/api/rooms/create', 
-        { name: roomName }, // Sending roomName as part of the request body
+      const response = await axios.post(`${API_BASE_URL}/api/rooms/create`, 
+      { name: roomName }, // Sending roomName as part of the request body
         { withCredentials: true } // Sending cookies along with the request
       );
 
@@ -26,7 +28,7 @@ const CreateRoom = () => {
       console.log(response.data);
 
       // Fetching rooms again after creating a new room
-      const roomsResponse = await axios.get('http://localhost:5000/api/rooms', { withCredentials: true });
+      const roomsResponse = await axios.get(`${API_BASE_URL}/api/rooms`, { withCredentials: true });
       
       // Updating the rooms state
       setRooms(roomsResponse.data.rooms);

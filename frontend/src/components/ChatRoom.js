@@ -3,6 +3,9 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
 import "../App.css";
+const API_BASE_URL = process.env.REACT_APP_API_URL;
+
+
 
 let socket;
 
@@ -27,7 +30,7 @@ const ChatRoom = ({ user, roomId, roomName, members = [], setMembers }) => {
   useEffect(() => {
 
     // Initialize socket connection
-    socket = io("http://localhost:5000");
+    socket = io(API_BASE_URL);
 
     // On connection, join the room with username
     socket.on("connect", () => {
@@ -38,7 +41,7 @@ const ChatRoom = ({ user, roomId, roomName, members = [], setMembers }) => {
     const fetchMessages = async () => {
       if (roomId) {
         try {
-          const res = await axios.get(`http://localhost:5000/api/chat/messages/${roomId}`, { withCredentials: true });
+          const res = await axios.get(`${API_BASE_URL}/api/chat/messages/${roomId}`, { withCredentials: true });
           setMessages(res.data.messages.map((message) => {
             return {
               ...message,
@@ -61,7 +64,7 @@ const ChatRoom = ({ user, roomId, roomName, members = [], setMembers }) => {
     const fetchRoomMembers = async () => {
       if (roomId) {
         try {
-          const res = await axios.get(`http://localhost:5000/api/rooms/${roomId}/members`, { withCredentials: true });
+          const res = await axios.get(`${API_BASE_URL}/api/rooms/${roomId}/members`, { withCredentials: true });
           setMembers(res.data.members);
         } catch (err) {
           console.error(err);

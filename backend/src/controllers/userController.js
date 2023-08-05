@@ -52,7 +52,7 @@ exports.login = async (req, res, next) => {
     });
 
     // Set the JWT token in an HTTP-only cookie
-    res.cookie("token", token);
+    res.cookie("token", token, { sameSite: "none", secure: true });
 
     console.log("Login successful:", username); // Log if the login is successful
 

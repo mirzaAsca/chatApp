@@ -26,19 +26,19 @@ exports.login = async (req, res, next) => {
   const { username, password } = req.body;
 
   try {
-    console.log('Login attempt:', username);  // Log the username of the login attempt
+    console.log("Login attempt:", username); // Log the username of the login attempt
 
     const user = await User.getUser(username);
 
     if (!user || !user.password) {
-      console.log('Login error: User does not exist');  // Log if the user does not exist
+      console.log("Login error: User does not exist"); // Log if the user does not exist
       return res.status(400).json({ error: "User does not exist" });
     }
 
     const validPassword = await bcryptjs.compare(password, user.password);
 
     if (!validPassword) {
-      console.log('Login error: Invalid password');  // Log if the password is invalid
+      console.log("Login error: Invalid password"); // Log if the password is invalid
       return res.status(400).json({ error: "Invalid password" });
     }
 
@@ -52,22 +52,16 @@ exports.login = async (req, res, next) => {
     });
 
     // Set the JWT token in an HTTP-only cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      sameSite: "strict", // or 'lax' depending on your needs
-      secure: false, // set this to true if your website runs on https, otherwise set it to false
-      maxAge: 3600000, // token expiration time in milliseconds, this is equal to 1 hour
-    });
+    res.cookie("token", token);
 
-    console.log('Login successful:', username);  // Log if the login is successful
+    console.log("Login successful:", username); // Log if the login is successful
 
     res.status(200).json({ message: "User logged in successfully", username });
   } catch (error) {
-    console.error("Unhandled error in login:", error);  // Log any unhandled errors
+    console.error("Unhandled error in login:", error); // Log any unhandled errors
     next(error);
   }
 };
-
 
 exports.logout = async (req, res, next) => {
   // Add the existing token to the invalidated tokens set
@@ -96,4 +90,3 @@ exports.logout = async (req, res, next) => {
     next(error);
   }
 };
-

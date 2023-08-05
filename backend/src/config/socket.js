@@ -1,8 +1,16 @@
 // Import necessary modules
+const path = require('path');
+const dotenv = require('dotenv');
 const socketIo = require("socket.io");
 const chatController = require("../controllers/chatController");
 const Redis = require("ioredis");
 const { RateLimiterRedis } = require("rate-limiter-flexible");
+
+if (process.env.NODE_ENV === 'production') {
+  dotenv.config({ path: path.resolve(__dirname, '../.env.production') });
+} else {
+  dotenv.config({ path: path.resolve(__dirname, '../.env.development') });
+}
 
 // Initialize Redis client with environment variables
 const redisClient = new Redis({

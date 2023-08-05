@@ -1,8 +1,13 @@
-require("dotenv").config();
+if (process.env.NODE_ENV === "production") {
+  require("dotenv").config({ path: "./.env.production" });
+} else {
+  require("dotenv").config({ path: "./.env.development" });
+}
+
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
-const cookieParser = require('cookie-parser');
+const cookieParser = require("cookie-parser");
 const userRoutes = require("./routes/userRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const roomRoutes = require("./routes/roomRoutes");
@@ -10,16 +15,21 @@ const { errorHandler } = require("./middleware/errorHandler");
 //const rateLimiter = require("./middleware/rateLimit");
 const User = require("./models/User");
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.log('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  console.log("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-process.on('uncaughtException', (err, origin) => {
-  console.log('Caught exception:', err, 'Exception origin:', origin);
+process.on("uncaughtException", (err, origin) => {
+  console.log("Caught exception:", err, "Exception origin:", origin);
 });
 
+// Check the NODE_ENV variable. If it's 'production', set the origin to the production URL.
+// Otherwise, use the development URL (localhost)
 const corsOptions = {
-  origin: 'http://localhost:3000',
+  origin:
+    process.env.NODE_ENV === "production"
+      ? process.env.REACT_APP_API_URL
+      : "http://localhost:3000",
   credentials: true,
 };
 
@@ -61,45 +71,47 @@ server.listen(process.env.PORT || 5000, () => {
 });
 
 // io.js
-const socketIo = require('socket.io');
+const socketIo = require("socket.io");
 
-module.exports = function(server) {
-  const io = socketIo(server);
+module.exports = function (server, corsOptions) {
+  const io = socketIo(server, {
+    cors: corsOptions,
+  });
 
-  io.on('connection', (socket) => {
-    console.log('New client connected');
+  io.on("connection", (socket) => {
+    console.log("New client connected");
 
-    socket.on('joinRoom', (roomId) => {
+    socket.on("joinRoom", (roomId) => {
       socket.join(roomId);
     });
 
-    socket.on('leaveRoom', (roomId) => {
+    socket.on("leaveRoom", (roomId) => {
       socket.leave(roomId);
     });
 
-    socket.on('sendMessage', (message) => {
-      io.to(message.roomId).emit('receiveMessage', message);
+    socket.on("sendMessage", (message) => {
+      io.to(message.roomId).emit("receiveMessage", message);
     });
 
-    socket.on('updateMessageStatus', async ({ messageId, status }) => {
-      console.log(`Received updateMessageStatus event from client with message ID: ${messageId} and status: ${status}`);
-      
+    socket.on("updateMessageStatus", async ({ messageId, status }) => {
+      console.log(
+        `Received updateMessageStatus event from client with message ID: ${messageId} and status: ${status}`
+      );
+
       try {
         // Update the message status in the database
-        await Message.hset(`directMessage:${messageId}`, 'status', status);
+        await Message.hset(`directMessage:${messageId}`, "status", status);
         console.log(`Updated status of message ${messageId} to ${status}`);
-        
+
         // Emit an updateMessageStatus event back to the clients with the updated message status
-        io.emit('updateMessageStatus', { messageId, status });
+        io.emit("updateMessageStatus", { messageId, status });
       } catch (error) {
-        console.error('Error updating message status:', error);
+        console.error("Error updating message status:", error);
       }
     });
-    
-    
 
-    socket.on('disconnect', () => {
-      console.log('Client disconnected');
+    socket.on("disconnect", () => {
+      console.log("Client disconnected");
     });
   });
 

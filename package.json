@@ -35,7 +35,7 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "concurrently \"npm run server\" \"npm run build\"",
     "client": "npm start --prefix frontend",
     "server": "node backend/src/server.js",
     "build": "npm run build --prefix frontend",

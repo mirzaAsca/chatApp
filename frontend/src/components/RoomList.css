@@ -1,0 +1,134 @@
+/* RoomList & UserList container */
+.room-user-list-container {
+    display: flex;
+    justify-content: space-between;
+    padding: 70px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+  
+  /* Common styles for RoomList & UserList */
+  .room-list,
+  .user-list {
+    width: 25rem;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    background:  #434651;
+    border-top-right-radius: 25px;
+    border-bottom-right-radius: 25px;
+    border-top-left-radius: 25px;
+  }
+
+  .user-list {
+    border-bottom-left-radius: 25px;
+    border-bottom-right-radius: 0px;
+  }
+  
+  .room-list h3,
+  .user-list h3 {
+    text-align: center;
+    color: #f2f5f8;
+    margin-bottom: 20px;
+  }
+  
+  .room-name {
+    text-align: center;
+    color: #434651;
+    margin-bottom: 20px;
+    cursor: pointer; /* Add this to change the cursor when hovering over the room name */
+  
+  }
+  .room-name:hover {
+    color: var(--blue);
+  }
+  
+  
+  .room-list div,
+  .user-list div {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: stretch; /* This will make child elements take full height of the div */
+    width: 100%;
+    margin-bottom: 5px; /* Reduced from 10px */
+  
+  }
+  
+  
+  .user-list div {
+  
+    padding: 5px; /* Added some padding */
+  }
+  
+
+  .room-list h3,
+  .user-list h3 {
+    flex: 1; /* This will make the h3 take the remaining space */
+    margin-bottom: 10px;
+    min-width: 130px
+  }
+  
+  .room-list h3 {
+    display: flex;
+    align-items: center;
+    text-align: left;
+    flex: 1;
+    margin-bottom: 10px;
+    white-space: nowrap;       /* Prevents the text from wrapping into multiple lines */
+    overflow: hidden;          /* Hides the text that overflows the element's box */
+    text-overflow: ellipsis;   /* Adds an ellipsis when the text overflows */
+  }
+  
+  .room-list h3 a {
+    display: block;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    width: 90%; /* adjust this as needed */
+  }
+  
+  
+  
+  .user-list a {
+    color: #f2f5f8;
+    text-decoration: none;
+    text-align: left;
+  }
+  
+  .room-list a:hover,
+  .user-list a:hover {
+    color: var(--blue);
+  }
+  
+  /* Specific styles for RoomList buttons */
+  .room-list button {
+    margin: 5px;
+    color: var(--blue);
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    background: #434651;
+  }
+  
+  .room-list button:hover {
+    color: #7092bf;
+  }
+  
+  /* Specific styles for the RoomList buttons container */
+  .room-buttons {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%; /* This will make the buttons container take full height of the parent div */
+    width: 100px; /* Adjust this as per your design */
+    flex: 1;
+  }
+  
+  .room-list button svg {
+    fill: currentColor;
+    width: 20px;  /* adjust as needed */
+    height: 20px;  /* adjust as needed */
+  }
+  

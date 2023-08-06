@@ -14,7 +14,7 @@ import CreateRoom from "./components/CreateRoom";
 import ProtectedChatRoom from "./components/ProtectedChatRoom";
 import LogoutButton from "./components/LogoutButton";
 import PrivateChat from "./components/PrivateChat";
-import { RoomsProvider } from './contexts/RoomsContext';
+import { RoomsProvider } from "./contexts/RoomsContext";
 import "./App.css";
 
 const MainApp = () => {
@@ -24,52 +24,65 @@ const MainApp = () => {
   // Initialize rooms as an empty array
   const [rooms, setRooms] = useState([]);
 
-  return (
-    <RoomsContext.Provider value={{ rooms, setRooms }}>
-      <div className="App">
-        {user && <p>Welcome, {user.username}!</p>}
-        {user && <LogoutButton />}
-        <nav>
-          <ul>
-            {!user && (
-              <>
-                <li>
-                  <Link to="/login">Login</Link>
-                </li>
-                <li>
-                  <Link to="/register">Register</Link>
-                </li>
-                <li>
-                  <Link to="/">Home</Link>
-                </li>
-              </>
-            )}
-            {user && (
-              <>
-                <li>
-                  <Link to="/">Home</Link>
-                </li>
-                <li>
-                  <Link to="/rooms">Rooms</Link>
-                </li>
-              </>
-            )}
-          </ul>
-        </nav>
+  // Determine whether the navbar should be hidden for the current route
+  const hideNavbar =
+    location.pathname === "/login" || location.pathname === "/register";
+
+    return (
+      <RoomsContext.Provider value={{ rooms, setRooms }}>
+        <div className="App">
+        {!hideNavbar && (
+  <div className="navbar">
+    <div className="navbar-left">
+      {user && <p>Welcome, {user.username}!</p>}
+      {user && <LogoutButton className="logout-button" />}
+    </div>
+    <nav>
+      <ul>
+        {!user && (
+          <>
+            <li>
+              <Link to="/login">Login</Link>
+            </li>
+            <li>
+              <Link to="/register">Register</Link>
+            </li>
+            <li>
+              <Link to="/">Home</Link>
+            </li>
+          </>
+        )}
+        {user && (
+          <>
+            <li>
+              <Link to="/">Home</Link>
+            </li>
+            <li>
+              <Link to="/rooms">Rooms</Link>
+            </li>
+          </>
+        )}
+      </ul>
+    </nav>
+  </div>
+)}
 
         <Routes>
           <Route path="/login" element={<LoginForm />} />
           <Route path="/register" element={<RegisterForm />} />
           {user && (
             <>
-              <Route path="/private/:chatId" element={<PrivateChat user={user} />} />
+              <Route
+                path="/private/:chatId"
+                element={<PrivateChat user={user} />}
+              />
 
               <Route
                 path="/rooms"
                 element={
                   <>
-                    <RoomList user={user} />
                     <CreateRoom user={user} />
+                    <RoomList user={user} />
                   </>
                 }
               />

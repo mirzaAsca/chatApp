@@ -1,4 +1,4 @@
-@import url(https://fonts.googleapis.com/css?family=Lato:400,700);
+@import url(https://fonts.googleapis.com/css?family=Open+Sans);
 
 :root {
   --green: #86bb71;
@@ -15,422 +15,104 @@
 
 body {
   background: #c5ddeb;
-  font: 14px/20px "Lato", Arial, sans-serif;
+
+  font: 14px/20px "Open Sans", sans-serif;
   height: 100vh;
   margin: 0; /* remove default margin */
   padding: 0; /* remove default padding */
   color: white;
 }
 
-.people-list {
-  width: 260px;
-  height: auto;
-  float: left;
-}
-
-.people-list .search {
-  padding: 20px;
-}
-
-.people-list input {
-  border-radius: 3px;
-  border: none;
-  padding: 14px;
-  color: white;
-  background: #6a6c75;
-  width: 90%;
-  font-size: 14px;
-}
-
-.people-list .fa-search {
-  position: relative;
-  left: -25px;
-}
-
-.people-list ul {
-  padding: 20px;
-  height: 70vh; /* adjust as necessary */
-  overflow-y: auto;
-}
-
-.people-list ul li {
-  padding-bottom: 20px;
-}
-
-.people-list img {
-  float: left;
-}
-
-.people-list .about {
-  float: left;
-  margin-top: 8px;
-  padding-left: 8px;
-}
-
-.people-list .status {
-  color: var(--gray);
-}
-
-.people-list,
-.chat {
-  flex-grow: 1;
-}
-
-.chat {
+/* Navbar container */
+.navbar {
   display: flex;
-  flex-direction: column;
-  width: 490px;
-  float: left;
-  background: #f2f5f8;
-  border-top-right-radius: 5px;
-  border-bottom-right-radius: 5px;
-  color: #434651;
-  height: auto;
-}
-
-.chat .chat-header {
-  padding: 20px;
-  border-bottom: 2px solid white;
-}
-
-.chat .chat-header img {
-  float: left;
-}
-
-.chat .chat-about {
-  float: left;
-  padding-left: 10px;
-  margin-top: 6px;
-}
-
-.chat .chat-with {
-  font-weight: bold;
-  font-size: 16px;
-}
-
-.chat .chat-num-messages {
-  color: var(--gray);
-}
-
-.chat .fa-star {
-  float: right;
-  color: #d8dadf;
-  font-size: 20px;
-  margin-top: 12px;
-}
-
-.chat .chat-history {
-  padding: 30px 30px 20px;
-  border-bottom: 2px solid white;
-  overflow-y: auto;
-  height: 50vh; /* adjust as necessary */
-  flex-grow: 1;
-  overflow-y: auto;
-}
-
-.chat .chat-history .message-data {
-  margin-bottom: 15px;
-}
-
-.chat .chat-history .message-data-time {
-  color: #84888c; /* lighten($gray, 8%) */
-  padding-left: 6px;
-}
-
-.chat .chat-history .message {
-  color: white;
-  padding: 18px 20px;
-  line-height: 26px;
-  font-size: 16px;
-  border-radius: 7px;
-  margin-bottom: 30px;
-  width: 90%;
-  position: relative;
-}
-
-.chat .chat-history .message:after {
-  bottom: 100%;
-  left: 7%;
-  border: solid transparent;
-  content: " ";
-  height: 0;
-  width: 0;
-  position: absolute;
-  pointer-events: none;
-  border-bottom-color: var(--green);
-  border-width: 10px;
-  margin-left: -10px;
-}
-
-.chat .chat-history .my-message {
-  background: var(--green);
-}
-
-.chat .chat-history .other-message {
-  background: var(--blue);
-}
-
-.chat .chat-history .other-message:after {
-  border-bottom-color: var(--blue);
-  left: 93%;
-}
-
-.chat .chat-message {
-  padding: 30px;
-}
-
-.chat .chat-message textarea {
-  width: 100%;
-  border: none;
+  justify-content: space-between;
+  align-items: center;
+  background: #434651;
   padding: 10px 20px;
-  font: 14px/22px "Lato", Arial, sans-serif;
-  border-radius: 5px;
-  resize: none;
+  color: #f2f5f8;
 }
 
-.chat .chat-message .fa-file-o,
-.chat .chat-message .fa-file-image-o {
-  font-size: 16px;
-  color: gray;
-  cursor: pointer;
+/* Welcome message and Logout button */
+.welcome-message {
+  display: flex;
+  align-items: center;
 }
 
-.chat .chat-message button {
-  float: right;
+.welcome-message p {
+  margin: 0;
+  margin-right: 10px;
+}
+
+/* Logout button styles (customize as needed) */
+button {
   color: var(--blue);
-  font-size: 16px;
-  text-transform: uppercase;
+  background: #434651;
   border: none;
   cursor: pointer;
   font-weight: bold;
-  background: #f2f5f8;
+  padding: 5px 10px;
+  border-radius: 5px;
 }
 
-.chat .chat-message button:hover {
+button:hover {
+  color: #7092bf;
+}
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #434651;
+  color: #f2f5f8;
+  padding: 10px 20px;
+  border-top-right-radius: 10px;
+  border-top-left-radius: 10px;
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+}
+
+.navbar p {
+  margin: 0;
+  font-weight: bold;
+  margin-right: 10px; /* Add some spacing between the welcome message and the logout button */
+}
+
+.navbar nav {
+  display: flex;
+}
+
+.navbar nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+}
+
+.navbar nav ul li {
+  margin: 0 15px;
+}
+
+.navbar nav ul li a {
+  text-decoration: none;
+  color: #f2f5f8;
+  font-weight: bold;
+}
+
+.navbar nav ul li a:hover {
   color: #7092bf; /* darken($blue, 7%) */
 }
 
-.online,
-.offline,
-.me {
-  margin-right: 3px;
-  font-size: 20px;
-}
-
-.online {
-  color: #86bb71;
-}
-
-.offline {
-  color: red;
-}
-
-.me {
-  color: var(--blue);
-}
-
-.align-left {
-  text-align: left;
-}
-
-.align-right {
-  text-align: right;
-}
-
-.float-right {
-  float: right;
-}
-
-.clearfix::after {
-  visibility: hidden;
-  display: block;
-  content: " ";
-  clear: both;
-}
-
-.container {
-  padding: 40px 20px;
-  margin: 0 auto;
-  width: 750px;
-  border-radius: 5px;
-  display: flex;
-  justify-content: space-between;
-}
-
-.list::-webkit-scrollbar {
-  width: 15px;
-}
-
-.list::-webkit-scrollbar-thumb {
-  background-color: #b8b8b8; /* Change this to your desired color */
-}
-
-.list::-webkit-scrollbar-track {
-  background-color: #f1f1f1; /* Change this to your desired color */
-}
-
-.people-list .search {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.people-list .add-room-button {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 40px;
+/* LogoutButton styling */
+.logout-button {
   cursor: pointer;
-}
-
-li::marker {
-  content: "";
-}
-
-.cloned-people-list {
-  direction: rtl;
-}
-
-.name {
-  text-align: left;
-}
-
-.search-hidden {
-  visibility: hidden;
-}
-
-.message-data-status {
-  display: inline-block;
-  width: 100%;
-  color: #84888c; /* lighten($gray, 8%) */
-  padding-left: 6px;
-}
-
-/* RoomList & UserList container */
-.room-user-list-container {
-  display: flex;
-  justify-content: space-between;
-  padding: 20px;
-}
-
-/* Common styles for RoomList & UserList */
-.room-list,
-.user-list {
-  width: 25rem;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  background: #f2f5f8;
-  border-radius: 7px;
-}
-
-.room-list h3,
-.user-list h3 {
-  text-align: center;
-  color: #434651;
-  margin-bottom: 20px;
-}
-
-.room-name {
-  text-align: center;
-  color: #434651;
-  margin-bottom: 20px;
-  cursor: pointer; /* Add this to change the cursor when hovering over the room name */
-
-}
-.room-name:hover {
-  color: var(--blue);
-}
-
-
-.room-list div,
-.user-list div {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: stretch; /* This will make child elements take full height of the div */
-  width: 100%;
-  margin-bottom: 5px; /* Reduced from 10px */
-
-}
-
-
-.user-list div {
-
-  padding: 5px; /* Added some padding */
-}
-
-
-
-
-
-.room-list h3,
-.user-list h3 {
-  flex: 1; /* This will make the h3 take the remaining space */
-  margin-bottom: 10px;
-  min-width: 130px
-}
-
-.room-list h3 {
-  display: flex;
-  align-items: center;
-  text-align: left;
-  flex: 1;
-  margin-bottom: 10px;
-  white-space: nowrap;       /* Prevents the text from wrapping into multiple lines */
-  overflow: hidden;          /* Hides the text that overflows the element's box */
-  text-overflow: ellipsis;   /* Adds an ellipsis when the text overflows */
-}
-
-.room-list h3 a {
-  display: block;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
-  width: 90%; /* adjust this as needed */
-}
-
-
-
-.room-list a,
-.user-list a {
-  color: #434651;
-  text-decoration: none;
-  text-align: left;
-}
-
-.room-list a:hover,
-.user-list a:hover {
-  color: var(--blue);
-}
-
-/* Specific styles for RoomList buttons */
-.room-list button {
-  margin: 5px;
-  color: var(--blue);
-  text-transform: uppercase;
-  border: none;
-  cursor: pointer;
-  font-weight: bold;
-  background: #f2f5f8;
-}
-
-.room-list button:hover {
   color: #7092bf;
+  font-weight: bold;
+  transition: color 0.3s ease-in-out; /* Smooth color transition on hover */
 }
 
-/* Specific styles for the RoomList buttons container */
-.room-buttons {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 100%; /* This will make the buttons container take full height of the parent div */
-  width: 100px; /* Adjust this as per your design */
-  flex: 1;
-}
-
-.room-list button svg {
-  fill: currentColor;
-  width: 20px;  /* adjust as needed */
-  height: 20px;  /* adjust as needed */
+.logout-button:hover {
+  color: #f2f5f8; /* darken($blue, 7%) */
 }

@@ -1,8 +1,10 @@
 // Import the necessary modules.
 import React, { useState, useContext } from "react"; // React and its hooks.
 import axios from "axios"; // Axios to make HTTP requests.
-import { useNavigate } from "react-router-dom"; // Navigation hook from react-router.
+import { useNavigate, Link } from "react-router-dom"; // Navigation hook from react-router.
 import { AuthContext } from "../contexts/AuthContext"; // Auth context to handle authentication.
+import "./LoginRegister.css"; // CSS for styling.
+
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 // LoginForm component definition.
@@ -42,13 +44,12 @@ const LoginForm = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="login-form" onSubmit={handleSubmit}>
       <label>
         Username:
         <input
           type="text"
           value={username}
-          // Update the username state variable on change.
           onChange={(e) => setUsername(e.target.value)}
         />
       </label>
@@ -57,13 +58,16 @@ const LoginForm = () => {
         <input
           type="password"
           value={password}
-          // Update the password state variable on change.
           onChange={(e) => setPassword(e.target.value)}
         />
       </label>
       <button type="submit">Log in</button>
+      <div className="form-footer">
+        Don't have an account? Click to <Link to="/register">Register!</Link>
+      </div>
     </form>
   );
+  
 };
 
 export default LoginForm;

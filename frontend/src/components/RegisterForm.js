@@ -1,6 +1,10 @@
 // Importing necessary libraries
 import React, { useState } from 'react';
 import axios from 'axios';
+import "./LoginRegister.css"; // CSS for styling.
+import { Link } from 'react-router-dom'; // Import Link from react-router-dom
+
+
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 
@@ -28,8 +32,7 @@ function RegisterForm() {
   };
 
   return (
-    // Form for user registration, with event handler for form submission
-    <form onSubmit={handleSubmit}>
+    <form className="register-form" onSubmit={handleSubmit}>
       <label>
         Username:
         <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} />
@@ -38,9 +41,13 @@ function RegisterForm() {
         Password:
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <button type="submit">Register</button> {/* Submit button for form submission */}
+      <button type="submit">Register</button>
+      <div className="form-footer">
+        Already have an account? Click to <Link to="/login">Log in!</Link>
+      </div>
     </form>
   );
+  
 }
 
 export default RegisterForm; // Exporting the RegisterForm component for use in other files

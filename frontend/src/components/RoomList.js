@@ -9,6 +9,8 @@ import { ReactComponent as DeleteIcon } from "./media/delete.svg";
 import { ReactComponent as LeaveIcon } from "./media/leave.svg";
 import { ReactComponent as CorrectIcon } from "./media/correct.svg";
 import ChatRoom from "./ChatRoom";
+import "./RoomList.css";
+
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 
@@ -163,6 +165,7 @@ const RoomList = () => {
         <div>You are not a member, please join the room!</div>
       )}
       <div className="user-list">
+      <h2>Members</h2>
         {members.map((member, index) =>
           member !== user.username ? (
             <div key={index}>
@@ -170,7 +173,7 @@ const RoomList = () => {
                 {member}
               </Link>
               {onlineUsers[member] ? (
-                <span style={{ color: "green" }}>◉</span>
+                <span style={{ color: "#86bb71" }}>◉</span>
               ) : (
                 <span style={{ color: "red" }}>◉</span>
               )}

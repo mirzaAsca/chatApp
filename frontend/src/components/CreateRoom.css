@@ -1,0 +1,35 @@
+.create-room-form {
+    width: 490px;
+    background: #f2f5f8;
+    border-radius: 7px;
+    padding: 20px;
+    margin: 0 auto;
+    text-align: center;
+    box-shadow: 0px 0px 5px 0px rgba(0, 0, 0, 0.1);
+  }
+  
+  .create-room-form input {
+    width: 80%;
+    padding: 10px 20px;
+    font: 14px/22px "Lato", Arial, sans-serif;
+    border-radius: 5px;
+    border: none;
+    outline: none;
+  }
+  
+  .create-room-form button {
+    color: var(--blue);
+    font-size: 16px;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    background: #f2f5f8;
+    padding: 10px 20px;
+    border-radius: 5px;
+  }
+  
+  .create-room-form button:hover {
+    color: #7092bf; /* darken($blue, 7%) */
+  }
+  

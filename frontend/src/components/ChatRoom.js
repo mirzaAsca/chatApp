@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import io from "socket.io-client";
-import "../App.css";
+import "./ChatRoom.css";
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 

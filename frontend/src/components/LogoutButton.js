@@ -3,6 +3,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';  // React Router's hook for navigation
 import axios from 'axios';  // HTTP client for the browser and node.js
 import { AuthContext } from '../contexts/AuthContext';  // Context for Auth
+import '../App.css';  // CSS for styling
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 
@@ -42,7 +43,7 @@ function LogoutButton() {
   
   // Rendering the Logout button
   return (
-    <button onClick={handleLogout}>Logout</button>
+    <button className='logout-button' onClick={handleLogout}>Logout</button>
   );
 }
 

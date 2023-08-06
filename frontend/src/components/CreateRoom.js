@@ -2,6 +2,9 @@
 import React, { useContext, useState } from 'react';
 import axios from 'axios';
 import { RoomsContext } from '../contexts/RoomsContext';
+import "./CreateRoom.css";
+
+
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 
@@ -43,17 +46,18 @@ const CreateRoom = () => {
 
   // Rendering the form
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="create-room-form" onSubmit={handleSubmit}>
       <input
         type="text"
         value={roomName}
-        onChange={(event) => setRoomName(event.target.value)} // Updating roomName state every time the input field changes
+        onChange={(event) => setRoomName(event.target.value)}
         placeholder="Room name"
         required
       />
       <button type="submit">Create Room</button>
     </form>
   );
+  
 };
 
 // Exporting CreateRoom component

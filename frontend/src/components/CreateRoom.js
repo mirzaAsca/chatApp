@@ -46,6 +46,7 @@ const CreateRoom = () => {
 
   // Rendering the form
   return (
+    
     <form className="create-room-form" onSubmit={handleSubmit}>
       <input
         type="text"

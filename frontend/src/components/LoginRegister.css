@@ -38,7 +38,7 @@
   background: #434651;
   padding: 10px 20px;
   border-radius: 5px;
-  width: 100%;
+  width: 30%;
 }
 
 .login-form button:hover {
@@ -85,7 +85,7 @@
   background: #434651;
   padding: 10px 20px;
   border-radius: 5px;
-  width: 100%;
+  width: 30%;
 }
 
 .register-form button:hover {

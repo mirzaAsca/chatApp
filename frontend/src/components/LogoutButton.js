@@ -13,7 +13,7 @@ function LogoutButton() {
   const navigate = useNavigate();
 
   // useContext hook to access the AuthContext
-  const { logout, user } = React.useContext(AuthContext);
+  const { logout } = React.useContext(AuthContext);
 
   // Function for handling the logout
   const handleLogout = async () => {
